@@ -1,0 +1,69 @@
+{
+  "name": "request_google_review",
+  "nodes": [
+    {
+      "parameters": {"httpMethod": "POST", "path": "request_google_review", "responseMode": "responseNode"},
+      "id": "wh-review", "name": "Webhook", "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2, "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "select", "tableId": "businesses",
+        "filters": {"conditions": [{"keyName": "id", "condition": "equals", "keyValue": "={{ $json.business_id }}"}]}
+      },
+      "id": "val-review", "name": "Validate Business", "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1, "position": [460, 300],
+      "credentials": {"supabaseApi": {"name": "Supabase_Main"}}
+    },
+    {
+      "parameters": {"conditions": {"options": {"leftValue": "={{ $json.length }}", "operation": "largerEqual", "rightValue": 1}}},
+      "id": "chk-review", "name": "Business Exists?", "type": "n8n-nodes-base.if",
+      "typeVersion": 2, "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "to": "={{ $('Webhook').item.json.parameters.customer_phone }}",
+        "from": "={{ $env.TWILIO_PHONE_NUMBER }}",
+        "message": "Thank you for your visit! We'd love your review: {{ $('Webhook').item.json.parameters.review_url }}"
+      },
+      "id": "sms-review", "name": "Send Review Request SMS", "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1, "position": [900, 200],
+      "credentials": {"twilioApi": {"name": "Twilio_Production"}}
+    },
+    {
+      "parameters": {
+        "operation": "update", "tableId": "tasks",
+        "filters": {"conditions": [{"keyName": "id", "condition": "equals", "keyValue": "={{ $('Webhook').item.json.task_id }}"}]},
+        "dataToSend": "defineBelow",
+        "fieldsUi": {"fieldValues": [
+          {"fieldId": "status", "fieldValue": "completed"},
+          {"fieldId": "completed_at", "fieldValue": "={{ new Date().toISOString() }}"}
+        ]}
+      },
+      "id": "upd-task-review", "name": "Mark Complete", "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1, "position": [1120, 200],
+      "credentials": {"supabaseApi": {"name": "Supabase_Main"}}
+    },
+    {
+      "parameters": {"respondWith": "json", "responseBody": "={\"success\": true, \"message\": \"Review request sent\"}"},
+      "id": "res-review", "name": "Respond OK", "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1, "position": [1340, 200]
+    },
+    {
+      "parameters": {"respondWith": "json", "responseBody": "={\"success\": false, \"message\": \"Business not found\"}", "responseCode": 404},
+      "id": "err-review", "name": "Error", "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1, "position": [900, 420]
+    }
+  ],
+  "connections": {
+    "Webhook": {"main": [[{"node": "Validate Business", "type": "main", "index": 0}]]},
+    "Validate Business": {"main": [[{"node": "Business Exists?", "type": "main", "index": 0}]]},
+    "Business Exists?": {"main": [
+      [{"node": "Send Review Request SMS", "type": "main", "index": 0}],
+      [{"node": "Error", "type": "main", "index": 0}]
+    ]},
+    "Send Review Request SMS": {"main": [[{"node": "Mark Complete", "type": "main", "index": 0}]]},
+    "Mark Complete": {"main": [[{"node": "Respond OK", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"}
+}

@@ -1,0 +1,86 @@
+{
+  "name": "log_no_show",
+  "nodes": [
+    {
+      "parameters": {"httpMethod": "POST", "path": "log_no_show", "responseMode": "responseNode"},
+      "id": "wh-noshow", "name": "Webhook", "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2, "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "select", "tableId": "businesses",
+        "filters": {"conditions": [{"keyName": "id", "condition": "equals", "keyValue": "={{ $json.business_id }}"}]}
+      },
+      "id": "val-noshow", "name": "Validate Business", "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1, "position": [460, 300],
+      "credentials": {"supabaseApi": {"name": "Supabase_Main"}}
+    },
+    {
+      "parameters": {"conditions": {"options": {"leftValue": "={{ $json.length }}", "operation": "largerEqual", "rightValue": 1}}},
+      "id": "chk-noshow", "name": "Business Exists?", "type": "n8n-nodes-base.if",
+      "typeVersion": 2, "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update", "tableId": "appointments",
+        "filters": {"conditions": [{"keyName": "id", "condition": "equals", "keyValue": "={{ $('Webhook').item.json.parameters.appointment_id }}"}]},
+        "dataToSend": "defineBelow",
+        "fieldsUi": {"fieldValues": [
+          {"fieldId": "status", "fieldValue": "no_show"}
+        ]}
+      },
+      "id": "upd-appt-noshow", "name": "Mark No Show", "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1, "position": [900, 150],
+      "credentials": {"supabaseApi": {"name": "Supabase_Main"}}
+    },
+    {
+      "parameters": {
+        "operation": "update", "tableId": "customers",
+        "filters": {"conditions": [{"keyName": "id", "condition": "equals", "keyValue": "={{ $('Webhook').item.json.parameters.customer_id }}"}]},
+        "dataToSend": "defineBelow",
+        "fieldsUi": {"fieldValues": [
+          {"fieldId": "tags", "fieldValue": "array_append(tags, 'at_risk')"}
+        ]}
+      },
+      "id": "upd-cust-noshow", "name": "Add at_risk Tag", "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1, "position": [900, 250],
+      "credentials": {"supabaseApi": {"name": "Supabase_Main"}}
+    },
+    {
+      "parameters": {
+        "operation": "update", "tableId": "tasks",
+        "filters": {"conditions": [{"keyName": "id", "condition": "equals", "keyValue": "={{ $('Webhook').item.json.task_id }}"}]},
+        "dataToSend": "defineBelow",
+        "fieldsUi": {"fieldValues": [
+          {"fieldId": "status", "fieldValue": "completed"},
+          {"fieldId": "completed_at", "fieldValue": "={{ new Date().toISOString() }}"}
+        ]}
+      },
+      "id": "upd-task-noshow", "name": "Mark Complete", "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1, "position": [1120, 200],
+      "credentials": {"supabaseApi": {"name": "Supabase_Main"}}
+    },
+    {
+      "parameters": {"respondWith": "json", "responseBody": "={\"success\": true, \"message\": \"No-show logged\"}"},
+      "id": "res-noshow", "name": "Respond OK", "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1, "position": [1340, 200]
+    },
+    {
+      "parameters": {"respondWith": "json", "responseBody": "={\"success\": false, \"message\": \"Business not found\"}", "responseCode": 404},
+      "id": "err-noshow", "name": "Error", "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1, "position": [900, 420]
+    }
+  ],
+  "connections": {
+    "Webhook": {"main": [[{"node": "Validate Business", "type": "main", "index": 0}]]},
+    "Validate Business": {"main": [[{"node": "Business Exists?", "type": "main", "index": 0}]]},
+    "Business Exists?": {"main": [
+      [{"node": "Mark No Show", "type": "main", "index": 0}],
+      [{"node": "Error", "type": "main", "index": 0}]
+    ]},
+    "Mark No Show": {"main": [[{"node": "Add at_risk Tag", "type": "main", "index": 0}]]},
+    "Add at_risk Tag": {"main": [[{"node": "Mark Complete", "type": "main", "index": 0}]]},
+    "Mark Complete": {"main": [[{"node": "Respond OK", "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"}
+}
