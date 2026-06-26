@@ -1,0 +1,46 @@
+version: "3.9"
+
+services:
+  backend:
+    image: automiqo-backend:latest
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../.env
+    depends_on:
+      - redis
+    restart: always
+
+  frontend:
+    image: automiqo-frontend:latest
+    ports:
+      - "3000:3000"
+    restart: always
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    restart: always
+
+  n8n:
+    image: n8nio/n8n:latest
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    restart: always
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    restart: always
+
+volumes:
+  redis_data:
+  n8n_data:
