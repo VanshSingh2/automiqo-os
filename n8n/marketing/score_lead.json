@@ -1,0 +1,92 @@
+{
+  "name": "Score Lead",
+  "nodes": [
+    {
+      "id": "1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "parameters": {
+        "path": "score_lead",
+        "httpMethod": "POST"
+      },
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "id": "2",
+      "name": "Validate",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "// Score a lead 0-100 based on: has website, review count, has booking system, industry fit.\nconst d = $input.first().json;\nif (!d.business_id) throw new Error('Missing business_id');\nreturn [$input.first()];"
+      },
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "id": "3",
+      "name": "Calculate Score",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "\nconst lead = $input.first().json;\nlet score = 0;\nif (lead.has_website) score += 20;\nif (lead.review_count > 10) score += 15;\nif (lead.review_count > 50) score += 10;\nif (!lead.has_booking_system) score += 25; // opportunity!\nif (lead.google_rating >= 4.0) score += 15;\nif (lead.phone) score += 10;\nif (lead.email) score += 5;\nreturn [{ json: { ...lead, score, scored: true } }];\n"
+      },
+      "position": [
+        650,
+        300
+      ]
+    },
+    {
+      "id": "4",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'ok', workflow: 'score_lead' } }}"
+      },
+      "position": [
+        850,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate": {
+      "main": [
+        [
+          {
+            "node": "Calculate Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Score": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}

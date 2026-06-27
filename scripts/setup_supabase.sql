@@ -494,3 +494,37 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='events' AND policyname='service_role_all') THEN
     CREATE POLICY "service_role_all" ON events FOR ALL USING (true); END IF;
 END $$;
+
+-- ============================================
+-- LEADS TABLE (CMO Lead Manager)
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS leads (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  company_name TEXT,
+  industry TEXT,
+  phone TEXT,
+  email TEXT,
+  website TEXT,
+  address TEXT,
+  city TEXT,
+  state TEXT,
+  google_rating NUMERIC,
+  review_count INTEGER DEFAULT 0,
+  has_booking_system BOOLEAN DEFAULT false,
+  has_website BOOLEAN DEFAULT false,
+  score INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'new',
+  source TEXT DEFAULT 'google_maps',
+  notes TEXT,
+  scraped_at TIMESTAMPTZ DEFAULT NOW(),
+  last_contacted TIMESTAMPTZ
+);
+
+ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='leads' AND policyname='service_role_all') THEN
+    CREATE POLICY "service_role_all" ON leads FOR ALL USING (true); END IF;
+END $$;
