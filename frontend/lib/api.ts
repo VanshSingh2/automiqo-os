@@ -1,12 +1,5 @@
-// In GitHub Codespaces, replace port 3000 with 8000 in the forwarded URL automatically
-function getBase(): string {
-  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
-  if (typeof window !== "undefined" && window.location.hostname.includes(".app.github.dev")) {
-    return window.location.origin.replace("-3000.", "-8000.");
-  }
-  return "http://localhost:8000";
-}
-const BASE = getBase();
+// All requests go through Next.js proxy (/api/proxy) — works in Codespace and local
+const BASE = "/api/proxy";
 
 export async function streamChat(
   businessId: string,

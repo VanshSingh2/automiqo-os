@@ -16,9 +16,12 @@ type Metrics = {
 export default function DashboardPage() {
   const [metrics, setMetrics] = useState<Metrics>({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     fetchMetrics(BUSINESS_ID).then((m) => {
+      if (Object.keys(m).length === 0) setError(true);
+      else setError(false);
       setMetrics(m as Metrics);
       setLoading(false);
     });
@@ -58,11 +61,11 @@ export default function DashboardPage() {
             </Card>
           ))}
         </div>
-        <div className="bg-[#1A1A2E] border border-[#2A2A4E] rounded-xl p-4">
-          <p className="text-sm text-gray-500">
-            {loading ? "Loading live data..." : "Live data from Supabase. Set SUPABASE_URL and SUPABASE_SERVICE_KEY in .env to connect."}
-          </p>
-        </div>
+        {error && (
+          <div className="bg-red-900/20 border border-red-500/30 rounded-xl p-4">
+            <p className="text-sm text-red-400">Backend unreachable — make sure <code>uvicorn</code> is running on port 8000.</p>
+          </div>
+        )}
       </div>
     </div>
   );
