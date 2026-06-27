@@ -2,7 +2,7 @@ import os
 import json
 from uuid import UUID
 from datetime import datetime, timezone
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
@@ -22,10 +22,9 @@ class CEOState(TypedDict):
 class CEOAgent(BaseAgent):
     def __init__(self, business_id: UUID):
         super().__init__(business_id)
-        self.llm = ChatAnthropic(
-            model="claude-sonnet-4-6",
-            api_key=os.getenv("ANTHROPIC_API_KEY", ""),
-            max_tokens=4096,
+        self.llm = ChatOpenAI(
+            model="gpt-4.1",
+            api_key=os.getenv("OPENAI_API_KEY", ""),
         )
         self.tools = make_ceo_tools(business_id)
         self.llm_with_tools = self.llm.bind_tools(self.tools)
