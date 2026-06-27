@@ -1,5 +1,4 @@
-.env
-__pycache__/
+﻿__pycache__/
 *.pyc
 .venv/
 venv/
@@ -12,3 +11,4 @@ n8n_data/
 dist/
 build/
 .pytest_cache/
+
