@@ -1,0 +1,63 @@
+{
+  "name": "Monitor VPS Health",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://backend:8000/health"
+      },
+      "name": "Check Health",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "table": "audit_log",
+        "columns": {
+          "mapping": {
+            "action": "vps_health_check",
+            "cpu_usage": "{{ $json.cpu }}",
+            "memory_usage": "{{ $json.memory }}",
+            "disk_usage": "{{ $json.disk }}",
+            "status": "{{ $json.status }}",
+            "timestamp": "{{ now.toISOString() }}"
+          }
+        }
+      },
+      "name": "Log Health Status",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {},
+      "name": "Complete",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1000, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Check Health", "type": "main", "index": 0 }]]
+    },
+    "Check Health": {
+      "main": [[{ "node": "Log Health Status", "type": "main", "index": 0 }]]
+    },
+    "Log Health Status": {
+      "main": [[{ "node": "Complete", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "hash": "monitor_vps_health",
+  "id": "monitor_vps_health"
+}

@@ -1,0 +1,75 @@
+{
+  "name": "Rollback to Version",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8000/cron/rollback",
+        "sendBody": true,
+        "bodyParametersUi": "keypairs",
+        "bodyParameters": {
+          "keypairs": [
+            {
+              "name": "workflow",
+              "value": "={{ $node.Webhook.json.workflow }}"
+            },
+            {
+              "name": "version",
+              "value": "={{ $node.Webhook.json.version }}"
+            }
+          ]
+        }
+      },
+      "name": "Execute Rollback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "table": "deployments",
+        "columns": {
+          "mapping": {
+            "workflow": "{{ $node.Webhook.json.workflow }}",
+            "version": "{{ $node.Webhook.json.version }}",
+            "action": "rollback",
+            "timestamp": "{{ now.toISOString() }}"
+          }
+        }
+      },
+      "name": "Log Rollback",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {},
+      "name": "Complete",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1000, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Execute Rollback", "type": "main", "index": 0 }]]
+    },
+    "Execute Rollback": {
+      "main": [[{ "node": "Log Rollback", "type": "main", "index": 0 }]]
+    },
+    "Log Rollback": {
+      "main": [[{ "node": "Complete", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "hash": "rollback_to_version",
+  "id": "rollback_to_version"
+}

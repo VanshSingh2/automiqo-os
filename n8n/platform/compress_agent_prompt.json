@@ -1,0 +1,62 @@
+{
+  "name": "Compress Agent Prompt",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://backend:8000/health"
+      },
+      "name": "Get Prompt Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "table": "prompts",
+        "columns": {
+          "mapping": {
+            "agent_name": "{{ $node.Webhook.json.agent_name }}",
+            "original_length": "{{ $json.prompt_length }}",
+            "compression_recommendation": "{{ $json.recommendation }}",
+            "compressed_tokens": "{{ $json.compressed_tokens }}",
+            "timestamp": "{{ now.toISOString() }}"
+          }
+        }
+      },
+      "name": "Log Recommendation",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {},
+      "name": "Complete",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1000, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Get Prompt Data", "type": "main", "index": 0 }]]
+    },
+    "Get Prompt Data": {
+      "main": [[{ "node": "Log Recommendation", "type": "main", "index": 0 }]]
+    },
+    "Log Recommendation": {
+      "main": [[{ "node": "Complete", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "hash": "compress_agent_prompt",
+  "id": "compress_agent_prompt"
+}

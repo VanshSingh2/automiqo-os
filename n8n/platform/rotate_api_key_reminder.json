@@ -1,0 +1,62 @@
+{
+  "name": "Rotate API Key Reminder",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "toPhone": "={{ $node.Webhook.json.owner_phone }}",
+        "message": "API key rotation needed: {{ $node.Webhook.json.key_name }} is {{ $node.Webhook.json.age_days }} days old. Rotate before {{ $node.Webhook.json.expiry_date }}."
+      },
+      "name": "Send SMS Reminder",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "table": "audit_log",
+        "columns": {
+          "mapping": {
+            "key_name": "{{ $node.Webhook.json.key_name }}",
+            "action": "key_rotation_reminder",
+            "age_days": "{{ $node.Webhook.json.age_days }}",
+            "timestamp": "{{ now.toISOString() }}"
+          }
+        }
+      },
+      "name": "Log Reminder",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {},
+      "name": "Complete",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1000, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Send SMS Reminder", "type": "main", "index": 0 }]]
+    },
+    "Send SMS Reminder": {
+      "main": [[{ "node": "Log Reminder", "type": "main", "index": 0 }]]
+    },
+    "Log Reminder": {
+      "main": [[{ "node": "Complete", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "hash": "rotate_api_key_reminder",
+  "id": "rotate_api_key_reminder"
+}

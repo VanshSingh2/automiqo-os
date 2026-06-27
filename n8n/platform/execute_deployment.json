@@ -1,0 +1,70 @@
+{
+  "name": "Execute Deployment",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://backend:8000/cron/deploy",
+        "sendBody": true,
+        "bodyParametersUi": "keypairs",
+        "bodyParameters": {
+          "keypairs": [
+            {
+              "name": "version",
+              "value": "={{ $node.Webhook.json.version }}"
+            }
+          ]
+        }
+      },
+      "name": "Deploy Version",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "table": "deployments",
+        "columns": {
+          "mapping": {
+            "version": "{{ $node.Webhook.json.version }}",
+            "status": "{{ $json.status }}",
+            "deployed_at": "{{ now.toISOString() }}"
+          }
+        }
+      },
+      "name": "Log Deployment",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {},
+      "name": "Complete",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1000, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Deploy Version", "type": "main", "index": 0 }]]
+    },
+    "Deploy Version": {
+      "main": [[{ "node": "Log Deployment", "type": "main", "index": 0 }]]
+    },
+    "Log Deployment": {
+      "main": [[{ "node": "Complete", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "hash": "execute_deployment",
+  "id": "execute_deployment"
+}

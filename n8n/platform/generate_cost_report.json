@@ -1,0 +1,63 @@
+{
+  "name": "Generate Cost Report",
+  "nodes": [
+    {
+      "parameters": {},
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "table": "ai_costs",
+        "where": "date = TODAY()",
+        "operation": "executeQuery",
+        "query": "SELECT model, SUM(cost) as total_cost FROM ai_costs WHERE date = CURRENT_DATE GROUP BY model"
+      },
+      "name": "Query Daily Costs",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "table": "reports",
+        "columns": {
+          "mapping": {
+            "report_type": "cost_report",
+            "report_date": "{{ now.toISOString() }}",
+            "data": "{{ JSON.stringify($json) }}",
+            "created_at": "{{ now.toISOString() }}"
+          }
+        }
+      },
+      "name": "Save Cost Report",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {},
+      "name": "Complete",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1000, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Query Daily Costs", "type": "main", "index": 0 }]]
+    },
+    "Query Daily Costs": {
+      "main": [[{ "node": "Save Cost Report", "type": "main", "index": 0 }]]
+    },
+    "Save Cost Report": {
+      "main": [[{ "node": "Complete", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "hash": "generate_cost_report",
+  "id": "generate_cost_report"
+}
