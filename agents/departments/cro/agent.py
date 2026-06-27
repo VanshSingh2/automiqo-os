@@ -20,7 +20,6 @@ class CROAgent(BaseAgent):
         self.llm = self._build_dept_llm()
 
     async def _query_managers(self, question: str, state: dict) -> dict:
-        """Run all sub-managers in parallel and merge their summaries."""
         managers = [RevenueRecoveryManager, PricingManager, MembershipManager, UpsellManager, GoalManager]
         tasks = [m(self.business_id).run(question, state) for m in managers]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -45,9 +44,27 @@ class CROAgent(BaseAgent):
             prompt = self._load_prompt("cro")
         except Exception:
             prompt = "You are the CRO. Respond with JSON: {status, summary, metrics, recommendations}."
+        # Consult specialists before LLM call
+        _q = question.lower()
+        _consultations = []
+        if any(w in _q for w in ["price", "pricing", "discount", "offer", "package", "cost"]):
+            _consultations.append({"specialist": "pricing_analyst", "task": question})
+        if any(w in _q for w in ["dormant", "inactive", "reactivate", "recover", "lapsed", "lost"]):
+            _consultations.append({"specialist": "sales_outbound_strategist", "task": question})
+        if any(w in _q for w in ["membership", "renewal", "subscription", "retain", "churn"]):
+            _consultations.append({"specialist": "offer_lead_gen_strategist", "task": question})
+        if any(w in _q for w in ["upsell", "upgrade", "cross-sell", "revenue", "increase"]):
+            _consultations.append({"specialist": "deal_strategist", "task": question})
+        if _consultations:
+            _insights = await self.consult_specialists_parallel(_consultations)
+            _specialist_block = "\n\n## Specialist Insights\n" + "\n".join(
+                f"### {k.replace('_', ' ').title()}\n{v}" for k, v in _insights.items()
+            )
+        else:
+            _specialist_block = ""
         messages = [
             SystemMessage(content=self._inject_biz(prompt)),
-            HumanMessage(content=f"Data: {json.dumps(state)}\n\nQuestion: {question}"),
+            HumanMessage(content=f"Data: {json.dumps(state)}{_specialist_block}\n\nQuestion: {question}"),
         ]
         response = await self.llm.ainvoke(messages)
         result = self._parse_response(response.content)

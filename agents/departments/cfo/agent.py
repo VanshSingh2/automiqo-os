@@ -18,7 +18,6 @@ class CFOAgent(BaseAgent):
         self.llm = self._build_dept_llm()
 
     async def _query_managers(self, question: str, state: dict) -> dict:
-        """Run all sub-managers in parallel and merge their summaries."""
         managers = [AnalyticsManager, BusinessPlanner, RiskManager]
         tasks = [m(self.business_id).run(question, state) for m in managers]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -51,9 +50,25 @@ class CFOAgent(BaseAgent):
             prompt = self._load_prompt("cfo")
         except Exception:
             prompt = "You are the CFO. Respond with JSON: {status, summary, metrics, recommendations}."
+        # Consult specialists before LLM call
+        _q = question.lower()
+        _consultations = []
+        if any(w in _q for w in ["forecast", "predict", "trend", "projection", "next month"]):
+            _consultations.append({"specialist": "fpa_analyst", "task": question})
+        if any(w in _q for w in ["analyze", "revenue", "profit", "margin", "performance", "report"]):
+            _consultations.append({"specialist": "financial_analyst", "task": question})
+        if any(w in _q for w in ["strategy", "decision", "invest", "allocate", "budget"]):
+            _consultations.append({"specialist": "chief_financial_officer", "task": question})
+        if _consultations:
+            _insights = await self.consult_specialists_parallel(_consultations)
+            _specialist_block = "\n\n## Specialist Insights\n" + "\n".join(
+                f"### {k.replace('_', ' ').title()}\n{v}" for k, v in _insights.items()
+            )
+        else:
+            _specialist_block = ""
         messages = [
             SystemMessage(content=self._inject_biz(prompt)),
-            HumanMessage(content=f"Data: {json.dumps(state)}\n\nQuestion: {question}"),
+            HumanMessage(content=f"Data: {json.dumps(state)}{_specialist_block}\n\nQuestion: {question}"),
         ]
         response = await self.llm.ainvoke(messages)
         result = self._parse_response(response.content)

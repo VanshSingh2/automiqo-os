@@ -13,6 +13,7 @@ from backend.api.auth import router as auth_router
 from backend.api.approvals import router as approvals_router
 from backend.api.chat import router as chat_router
 from backend.api.reports import router as reports_router
+from backend.api.specialists import router as specialists_router
 
 
 @asynccontextmanager
@@ -46,6 +47,7 @@ app.include_router(auth_router)
 app.include_router(approvals_router)
 app.include_router(chat_router)
 app.include_router(reports_router)
+app.include_router(specialists_router)
 
 
 def _check_cron_secret(x_cron_secret: str = Header(None)):

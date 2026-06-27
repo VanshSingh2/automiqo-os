@@ -1,9 +1,9 @@
-"""Overwrite dept agents with manager-delegation wiring."""
+"""Regenerate dept agents with specialists consulted BEFORE building messages."""
 import os
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-DEPT_TEMPLATE = '''import os
+TEMPLATE = '''import os
 import json
 import asyncio
 from uuid import UUID
@@ -19,7 +19,6 @@ class {class_name}(BaseAgent):
         self.llm = self._build_dept_llm()
 
     async def _query_managers(self, question: str, state: dict) -> dict:
-        """Run all sub-managers in parallel and merge their summaries."""
         managers = [{manager_list}]
         tasks = [m(self.business_id).run(question, state) for m in managers]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -40,10 +39,10 @@ class {class_name}(BaseAgent):
             prompt = self._load_prompt("{prompt_name}")
         except Exception:
             prompt = "You are the {role}. Respond with JSON: {{status, summary, metrics, recommendations}}."
-        # Consult relevant specialists based on question keywords
+        # Consult specialists before LLM call
         _q = question.lower()
-        _consultations = {specialist_consultations}
-        if _consultations:
+        _consultations = []
+{specialist_checks}        if _consultations:
             _insights = await self.consult_specialists_parallel(_consultations)
             _specialist_block = "\\n\\n## Specialist Insights\\n" + "\\n".join(
                 f"### {{k.replace('_', ' ').title()}}\\n{{v}}" for k, v in _insights.items()
@@ -60,11 +59,18 @@ class {class_name}(BaseAgent):
         return result
 '''
 
+def checks(mappings):
+    lines = ""
+    for keywords, specialist in mappings:
+        kws = ", ".join(f'"{k}"' for k in keywords)
+        lines += f'        if any(w in _q for w in [{kws}]):\n'
+        lines += f'            _consultations.append({{"specialist": "{specialist}", "task": question}})\n'
+    return lines
+
 depts = [
     {
-        "class_name": "COOAgent",
-        "prompt_name": "coo",
-        "role": "COO",
+        "class_name": "COOAgent", "prompt_name": "coo", "role": "COO",
+        "out": "agents/departments/coo/agent.py",
         "imports": """from agents.departments.coo.managers.appointment_manager import AppointmentManager
 from agents.departments.coo.managers.crm_manager import CRMManager
 from agents.departments.coo.managers.staff_manager import StaffManager
@@ -73,13 +79,16 @@ from agents.departments.coo.managers.procurement_manager import ProcurementManag
 from agents.departments.coo.managers.compliance_manager import ComplianceManager
 from backend.memory.company import get_company_state""",
         "manager_list": "AppointmentManager, CRMManager, StaffManager, InventoryManager, ProcurementManager, ComplianceManager",
-        "fetch_state": """        state = await get_company_state(self.business_id)""",
-        "out": "agents/departments/coo/agent.py",
+        "fetch_state": "        state = await get_company_state(self.business_id)",
+        "specialists": [
+            (["appointment", "booking", "schedule", "slot", "calendar", "reschedule"], "appointment_optimizer"),
+            (["staff", "capacity", "workload", "utilization", "shift"], "operations_manager"),
+            (["workflow", "process", "efficiency", "optimize", "operations"], "workflow_optimizer"),
+        ],
     },
     {
-        "class_name": "CROAgent",
-        "prompt_name": "cro",
-        "role": "CRO",
+        "class_name": "CROAgent", "prompt_name": "cro", "role": "CRO",
+        "out": "agents/departments/cro/agent.py",
         "imports": """from agents.departments.cro.managers.revenue_recovery_manager import RevenueRecoveryManager
 from agents.departments.cro.managers.pricing_manager import PricingManager
 from agents.departments.cro.managers.membership_manager import MembershipManager
@@ -93,12 +102,16 @@ from backend.memory.supabase_client import get_supabase""",
         all_customers = sb.table("customers").select("id,tags").eq("business_id", str(self.business_id)).execute().data or []
         at_risk = [c for c in all_customers if "churn_risk" in (c.get("tags") or [])]
         state = {"dormant_30d": len(dormant), "churn_risk_count": len(at_risk)}""",
-        "out": "agents/departments/cro/agent.py",
+        "specialists": [
+            (["price", "pricing", "discount", "offer", "package", "cost"], "pricing_analyst"),
+            (["dormant", "inactive", "reactivate", "recover", "lapsed", "lost"], "sales_outbound_strategist"),
+            (["membership", "renewal", "subscription", "retain", "churn"], "offer_lead_gen_strategist"),
+            (["upsell", "upgrade", "cross-sell", "revenue", "increase"], "deal_strategist"),
+        ],
     },
     {
-        "class_name": "CMOAgent",
-        "prompt_name": "cmo",
-        "role": "CMO",
+        "class_name": "CMOAgent", "prompt_name": "cmo", "role": "CMO",
+        "out": "agents/departments/cmo/agent.py",
         "imports": """from agents.departments.cmo.managers.campaign_manager import CampaignManager
 from agents.departments.cmo.managers.content_manager import ContentManager
 from agents.departments.cmo.managers.lead_manager import LeadManager
@@ -116,12 +129,16 @@ from backend.memory.supabase_client import get_supabase""",
             "total_sent": sum(c.get("sent_count") or 0 for c in campaigns),
             "total_bookings_from_campaigns": sum(c.get("booking_count") or 0 for c in campaigns),
         }""",
-        "out": "agents/departments/cmo/agent.py",
+        "specialists": [
+            (["email", "campaign", "message", "sms", "send", "outreach"], "email_marketing_strategist"),
+            (["lead", "prospect", "acquire", "scrape", "find"], "sales_outbound_strategist"),
+            (["social", "instagram", "content", "post", "tiktok"], "content_creator"),
+            (["grow", "conversion", "viral", "referral", "traffic"], "growth_hacker"),
+        ],
     },
     {
-        "class_name": "CFOAgent",
-        "prompt_name": "cfo",
-        "role": "CFO",
+        "class_name": "CFOAgent", "prompt_name": "cfo", "role": "CFO",
+        "out": "agents/departments/cfo/agent.py",
         "imports": """from agents.departments.cfo.managers.analytics_manager import AnalyticsManager
 from agents.departments.cfo.managers.business_planner import BusinessPlanner
 from agents.departments.cfo.managers.risk_manager import RiskManager
@@ -141,12 +158,15 @@ from datetime import datetime, timezone, timedelta""",
             "appts_week": len(appts_week),
             "no_shows_week": len([a for a in appts_week if a["status"] == "no_show"]),
         }""",
-        "out": "agents/departments/cfo/agent.py",
+        "specialists": [
+            (["forecast", "predict", "trend", "projection", "next month"], "fpa_analyst"),
+            (["analyze", "revenue", "profit", "margin", "performance", "report"], "financial_analyst"),
+            (["strategy", "decision", "invest", "allocate", "budget"], "chief_financial_officer"),
+        ],
     },
     {
-        "class_name": "CustomerSuccessAgent",
-        "prompt_name": "customer_success_director",
-        "role": "Customer Success Director",
+        "class_name": "CustomerSuccessAgent", "prompt_name": "customer_success_director", "role": "Customer Success Director",
+        "out": "agents/departments/customer_success/agent.py",
         "imports": """from agents.departments.customer_success.managers.reputation_manager import ReputationManager
 from agents.departments.customer_success.managers.customer_success_manager import CustomerSuccessManager
 from agents.departments.customer_success.managers.loyalty_manager import LoyaltyManager
@@ -158,12 +178,16 @@ from backend.memory.supabase_client import get_supabase""",
         all_customers = sb.table("customers").select("id,tags").eq("business_id", bid).execute().data or []
         churn_risk = [c for c in all_customers if "churn_risk" in (c.get("tags") or [])]
         state = {"open_complaints": len(open_complaints), "churn_risk": len(churn_risk)}""",
-        "out": "agents/departments/customer_success/agent.py",
+        "specialists": [
+            (["complaint", "unhappy", "refund", "issue", "problem", "angry"], "customer_service"),
+            (["review", "reputation", "rating", "google", "feedback"], "pr_communications_manager"),
+            (["retain", "churn", "loyalty", "returning", "rebook"], "customer_success_manager"),
+            (["experience", "satisfaction", "survey", "nps", "feeling"], "hospitality_guest_services"),
+        ],
     },
     {
-        "class_name": "LearningDirectorAgent",
-        "prompt_name": "learning_director",
-        "role": "Learning Director",
+        "class_name": "LearningDirectorAgent", "prompt_name": "learning_director", "role": "Learning Director",
+        "out": "agents/departments/learning/agent.py",
         "imports": """from agents.departments.learning.managers.reflection_manager import ReflectionManager
 from agents.departments.learning.managers.knowledge_manager import KnowledgeManager
 from agents.departments.learning.managers.prompt_improvement_manager import PromptImprovementManager
@@ -181,22 +205,27 @@ from datetime import datetime, timezone, timedelta""",
             "mistakes_7d": len([r for r in reflections if r.get("mistake")]),
             "failed_workflows_7d": len(failed_tasks),
         }""",
-        "out": "agents/departments/learning/agent.py",
+        "specialists": [
+            (["prompt", "improve", "optimize", "hallucination", "ai response"], "prompt_engineer"),
+            (["agent", "multi-agent", "pipeline", "orchestration", "delegation"], "multi_agent_systems_architect"),
+            (["workflow", "n8n", "automation", "process", "failure"], "workflow_optimizer"),
+        ],
     },
 ]
 
 for dept in depts:
-    content = DEPT_TEMPLATE.format(
+    content = TEMPLATE.format(
         class_name=dept["class_name"],
         prompt_name=dept["prompt_name"],
         role=dept["role"],
         imports=dept["imports"],
         manager_list=dept["manager_list"],
         fetch_state=dept["fetch_state"],
+        specialist_checks=checks(dept["specialists"]),
     )
     path = os.path.join(BASE, dept["out"])
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
-    print(f"Wired: {dept['out']}")
+    print(f"  {dept['out']}")
 
-print("All dept agents wired to managers!")
+print("All dept agents regenerated with specialists")

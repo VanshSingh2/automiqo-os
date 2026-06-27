@@ -19,7 +19,6 @@ class LearningDirectorAgent(BaseAgent):
         self.llm = self._build_dept_llm()
 
     async def _query_managers(self, question: str, state: dict) -> dict:
-        """Run all sub-managers in parallel and merge their summaries."""
         managers = [ReflectionManager, KnowledgeManager, PromptImprovementManager, InnovationManager]
         tasks = [m(self.business_id).run(question, state) for m in managers]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -49,9 +48,25 @@ class LearningDirectorAgent(BaseAgent):
             prompt = self._load_prompt("learning_director")
         except Exception:
             prompt = "You are the Learning Director. Respond with JSON: {status, summary, metrics, recommendations}."
+        # Consult specialists before LLM call
+        _q = question.lower()
+        _consultations = []
+        if any(w in _q for w in ["prompt", "improve", "optimize", "hallucination", "ai response"]):
+            _consultations.append({"specialist": "prompt_engineer", "task": question})
+        if any(w in _q for w in ["agent", "multi-agent", "pipeline", "orchestration", "delegation"]):
+            _consultations.append({"specialist": "multi_agent_systems_architect", "task": question})
+        if any(w in _q for w in ["workflow", "n8n", "automation", "process", "failure"]):
+            _consultations.append({"specialist": "workflow_optimizer", "task": question})
+        if _consultations:
+            _insights = await self.consult_specialists_parallel(_consultations)
+            _specialist_block = "\n\n## Specialist Insights\n" + "\n".join(
+                f"### {k.replace('_', ' ').title()}\n{v}" for k, v in _insights.items()
+            )
+        else:
+            _specialist_block = ""
         messages = [
             SystemMessage(content=self._inject_biz(prompt)),
-            HumanMessage(content=f"Data: {json.dumps(state)}\n\nQuestion: {question}"),
+            HumanMessage(content=f"Data: {json.dumps(state)}{_specialist_block}\n\nQuestion: {question}"),
         ]
         response = await self.llm.ainvoke(messages)
         result = self._parse_response(response.content)

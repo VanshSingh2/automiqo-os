@@ -35,9 +35,30 @@ class CTOAgent(BaseAgent):
             prompt = "You are the CTO. Monitor platform health, workflow reliability, and system performance."
         messages = [
             SystemMessage(content=self._inject_biz(prompt)),
-            HumanMessage(content=f"Data: {json.dumps(state)}\n\nQuestion: {question}"),
+            HumanMessage(content=f"Data: {json.dumps(state)}{_specialist_block}\n\nQuestion: {question}"),
         ]
-        response = await self.llm.ainvoke(messages)
+
+        # Consult relevant specialists based on question keywords
+        _q = question.lower()
+        _consultations = []
+        if any(w in _q for w in ["slow", "query", "database", "index", "performance", "latency"]):
+            _consultations.append({"specialist": "database_optimizer", "task": question})
+        if any(w in _q for w in ["deploy", "docker", "vps", "server", "infrastructure", "ci"]):
+            _consultations.append({"specialist": "devops_automator", "task": question})
+        if any(w in _q for w in ["incident", "outage", "down", "error", "critical", "crash"]):
+            _consultations.append({"specialist": "incident_response_commander", "task": question})
+        if any(w in _q for w in ["security", "vulnerability", "breach", "credential", "leak"]):
+            _consultations.append({"specialist": "security_architect", "task": question})
+        if any(w in _q for w in ["compliance", "hipaa", "gdpr", "tcpa", "legal", "audit"]):
+            _consultations.append({"specialist": "compliance_auditor", "task": question})
+        if _consultations:
+            _insights = await self.consult_specialists_parallel(_consultations)
+            _specialist_block = "\n\n## Specialist Insights\n" + "\n".join(
+                f"### {k.replace('_', ' ').title()}\n{v}" for k, v in _insights.items()
+            )
+        else:
+            _specialist_block = ""
+                response = await self.llm.ainvoke(messages)
         try:
 
                             _m=__import__("re").search(r"""", response.content); _c=_m.group(0)[_m.group(0).find("{"): ] if _m else response.content; parsed = json.loads(_c)

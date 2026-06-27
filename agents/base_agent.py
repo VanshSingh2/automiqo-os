@@ -36,6 +36,22 @@ class BaseAgent(ABC):
         else:
             return ChatOpenAI(model=model or "gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY", ""))
 
+    async def consult_specialist(self, specialist: str, task: str, extra_context: dict = {}) -> str:
+        """Consult a specialist expert. Available to all agents."""
+        from agents.shared.specialist_caller import SpecialistCaller
+        return await SpecialistCaller().consult(
+            specialist, task,
+            {"business_id": str(self.business_id), "agent": self.__class__.__name__, **extra_context}
+        )
+
+    async def consult_specialists_parallel(self, consultations: list, extra_context: dict = {}) -> dict:
+        """Consult multiple specialists simultaneously."""
+        from agents.shared.specialist_caller import SpecialistCaller
+        return await SpecialistCaller().consult_multiple(
+            consultations,
+            {"business_id": str(self.business_id), "agent": self.__class__.__name__, **extra_context}
+        )
+
     @staticmethod
     def _parse_response(content: str) -> "AgentResponse":
         """Parse LLM response, stripping markdown code fences if present."""
