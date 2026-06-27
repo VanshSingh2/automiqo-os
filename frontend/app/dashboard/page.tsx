@@ -1,54 +1,67 @@
 "use client";
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { fetchMetrics } from "@/lib/api";
 
-const DEMO_METRICS = [
-  { title: "Revenue Today", value: "$2,840", delta: "+12% vs yesterday", color: "text-green-400" },
-  { title: "Appointments", value: "14", delta: "3 completed • 2 pending", color: "text-blue-400" },
-  { title: "Missed Calls", value: "2", delta: "Auto-recovering now", color: "text-yellow-400" },
-  { title: "Pending Approvals", value: "3", delta: "Review needed", color: "text-orange-400" },
-];
+const BUSINESS_ID = process.env.NEXT_PUBLIC_BUSINESS_ID || "00000000-0000-0000-0000-000000000001";
 
-const DEMO_ALERTS = [
-  { type: "warning", message: "James Park hasn't visited in 45 days — send reactivation?" },
-  { type: "info", message: "Lisa Torres flagged as churn risk — 2 visits, no rebook" },
-  { type: "success", message: "Emma Wilson completed Botox — review request sent" },
-];
+type Metrics = {
+  appointments_today?: number;
+  completed_today?: number;
+  no_shows_today?: number;
+  revenue_today?: number;
+  active_staff?: number;
+};
 
 export default function DashboardPage() {
+  const [metrics, setMetrics] = useState<Metrics>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchMetrics(BUSINESS_ID).then((m) => {
+      setMetrics(m as Metrics);
+      setLoading(false);
+    });
+    const interval = setInterval(() => {
+      fetchMetrics(BUSINESS_ID).then((m) => setMetrics(m as Metrics));
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const cards = [
+    { title: "Revenue Today", value: loading ? "..." : `$${(metrics.revenue_today || 0).toLocaleString()}`, color: "text-green-400" },
+    { title: "Appointments", value: loading ? "..." : String(metrics.appointments_today || 0), color: "text-blue-400" },
+    { title: "Completed", value: loading ? "..." : String(metrics.completed_today || 0), color: "text-green-400" },
+    { title: "No-Shows", value: loading ? "..." : String(metrics.no_shows_today || 0), color: "text-red-400" },
+    { title: "Active Staff", value: loading ? "..." : String(metrics.active_staff || 0), color: "text-purple-400" },
+  ];
+
   return (
     <div className="p-6 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        <h1 className="text-2xl font-bold text-white mb-2">Good morning 👋</h1>
-        <p className="text-gray-400 mb-6 text-sm">Here&apos;s what&apos;s happening at Glow Med Spa today</p>
-
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {DEMO_METRICS.map((m) => (
-            <Card key={m.title} className="bg-[#1A1A2E] border-[#2A2A4E]">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+            <p className="text-gray-400 text-sm mt-1">Live data &bull; refreshes every 30s</p>
+          </div>
+          <div className={`w-2 h-2 rounded-full ${loading ? "bg-yellow-400" : "bg-green-400"}`} />
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+          {cards.map((c) => (
+            <Card key={c.title} className="bg-[#1A1A2E] border-[#2A2A4E]">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-gray-400 font-normal">{m.title}</CardTitle>
+                <CardTitle className="text-xs text-gray-400 font-normal">{c.title}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold text-white">{m.value}</p>
-                <p className={`text-xs mt-1 ${m.color}`}>{m.delta}</p>
+                <p className={`text-2xl font-bold ${c.color}`}>{c.value}</p>
               </CardContent>
             </Card>
           ))}
         </div>
-
         <div className="bg-[#1A1A2E] border border-[#2A2A4E] rounded-xl p-4">
-          <h2 className="text-sm font-semibold text-gray-400 mb-3">AI Alerts</h2>
-          <div className="space-y-2">
-            {DEMO_ALERTS.map((a, i) => (
-              <div key={i} className={`flex items-start gap-3 p-3 rounded-lg ${
-                a.type === "warning" ? "bg-yellow-500/10 border border-yellow-500/20" :
-                a.type === "success" ? "bg-green-500/10 border border-green-500/20" :
-                "bg-blue-500/10 border border-blue-500/20"
-              }`}>
-                <span className="text-sm text-gray-300">{a.message}</span>
-              </div>
-            ))}
-          </div>
-          <p className="text-xs text-gray-600 mt-3">Connect Supabase credentials to see live data</p>
+          <p className="text-sm text-gray-500">
+            {loading ? "Loading live data..." : "Live data from Supabase. Set SUPABASE_URL and SUPABASE_SERVICE_KEY in .env to connect."}
+          </p>
         </div>
       </div>
     </div>

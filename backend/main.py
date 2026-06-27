@@ -28,3 +28,21 @@ app.include_router(auth_router)
 app.include_router(approvals_router)
 app.include_router(chat_router)
 app.include_router(reports_router)
+
+
+@app.post("/cron/morning-briefing")
+async def cron_morning_briefing():
+    """Called by n8n at 7am daily."""
+    import asyncio
+    from backend.cron.morning_briefing import run_morning_briefing
+    asyncio.create_task(run_morning_briefing())
+    return {"status": "queued"}
+
+
+@app.post("/cron/nightly-learning")
+async def cron_nightly_learning():
+    """Called at 10pm daily."""
+    import asyncio
+    from backend.cron.nightly_learning import run_nightly_learning
+    asyncio.create_task(run_nightly_learning())
+    return {"status": "queued"}

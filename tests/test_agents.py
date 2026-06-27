@@ -1,6 +1,39 @@
 import pytest
+import sys
 from unittest.mock import AsyncMock, patch, MagicMock
 from uuid import uuid4
+
+# ---------------------------------------------------------------------------
+# Stub all third-party packages that aren't installed in the test environment.
+# Must happen before any agent import so collection succeeds.
+# ---------------------------------------------------------------------------
+def _ensure_stub(name):
+    if name not in sys.modules:
+        sys.modules[name] = MagicMock()
+
+for _mod in [
+    "supabase",
+    "langchain_openai",
+    "langchain_core",
+    "langchain_core.messages",
+    "langchain_core.tools",
+]:
+    _ensure_stub(_mod)
+
+# Realistic constructors so isinstance checks / attribute access work
+sys.modules["langchain_core.messages"].HumanMessage = MagicMock(
+    side_effect=lambda content: MagicMock(content=content)
+)
+sys.modules["langchain_core.messages"].SystemMessage = MagicMock(
+    side_effect=lambda content: MagicMock(content=content)
+)
+sys.modules["langchain_openai"].ChatOpenAI = MagicMock
+sys.modules["supabase"].create_client = MagicMock()
+sys.modules["supabase"].Client = MagicMock
+
+# Now import so patch() can resolve paths
+import agents.departments.cmo.agent   # noqa: F401
+import agents.departments.cfo.agent   # noqa: F401
 
 
 @pytest.mark.asyncio
