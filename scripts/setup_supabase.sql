@@ -259,3 +259,116 @@ CREATE POLICY "service_role_all" ON recommendations FOR ALL USING (true);
 CREATE POLICY "service_role_all" ON reports FOR ALL USING (true);
 CREATE POLICY "service_role_all" ON goals FOR ALL USING (true);
 CREATE POLICY "service_role_all" ON knowledge FOR ALL USING (true);
+
+-- ============================================
+-- v3 ADDITIONS
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS internal_tasks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  owner TEXT,
+  assigned_by TEXT,
+  department TEXT,
+  priority TEXT DEFAULT 'normal',
+  status TEXT DEFAULT 'open',
+  due_date DATE,
+  linked_customer_id UUID REFERENCES customers(id),
+  linked_appointment_id UUID REFERENCES appointments(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  completed_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  trigger_type TEXT,
+  trigger_data JSONB,
+  agent_chain JSONB,
+  workflow_executed TEXT,
+  result TEXT,
+  revenue_impact NUMERIC,
+  duration_ms INTEGER,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS experiments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  name TEXT,
+  variant_a TEXT,
+  variant_b TEXT,
+  metric TEXT,
+  status TEXT DEFAULT 'running',
+  winner TEXT,
+  a_results JSONB,
+  b_results JSONB,
+  started_at TIMESTAMPTZ DEFAULT NOW(),
+  ended_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS vendors (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  name TEXT,
+  contact_name TEXT,
+  email TEXT,
+  phone TEXT,
+  products TEXT[],
+  lead_time_days INTEGER,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  vendor_id UUID REFERENCES vendors(id),
+  items JSONB,
+  total_amount NUMERIC,
+  status TEXT DEFAULT 'draft',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  sent_at TIMESTAMPTZ,
+  received_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS ai_costs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  date DATE,
+  model TEXT,
+  input_tokens INTEGER,
+  output_tokens INTEGER,
+  cost_usd NUMERIC,
+  agent_name TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS notifications_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  recipient_type TEXT,
+  recipient_id UUID,
+  channel TEXT,
+  message TEXT,
+  status TEXT,
+  sent_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE internal_tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE experiments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE vendors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE purchase_orders ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_costs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications_log ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY IF NOT EXISTS "service_role_all" ON internal_tasks FOR ALL USING (true);
+CREATE POLICY IF NOT EXISTS "service_role_all" ON audit_log FOR ALL USING (true);
+CREATE POLICY IF NOT EXISTS "service_role_all" ON experiments FOR ALL USING (true);
+CREATE POLICY IF NOT EXISTS "service_role_all" ON vendors FOR ALL USING (true);
+CREATE POLICY IF NOT EXISTS "service_role_all" ON purchase_orders FOR ALL USING (true);
+CREATE POLICY IF NOT EXISTS "service_role_all" ON ai_costs FOR ALL USING (true);
+CREATE POLICY IF NOT EXISTS "service_role_all" ON notifications_log FOR ALL USING (true);

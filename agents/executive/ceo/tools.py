@@ -50,4 +50,28 @@ def make_ceo_tools(business_id: UUID):
         }).execute()
         return {"saved": True, "id": result.data[0]["id"] if result.data else None}
 
-    return [get_business_state, ask_coo, ask_cro, ask_customer_success, create_recommendation]
+    @tool
+    async def ask_cmo(question: str) -> dict:
+        """Ask the CMO about campaigns, leads, and marketing performance."""
+        from agents.departments.cmo.agent import CMOAgent
+        agent = CMOAgent(business_id)
+        resp = await agent.run(question)
+        return {"summary": resp.summary, "metrics": resp.metrics}
+
+    @tool
+    async def ask_cfo(question: str) -> dict:
+        """Ask the CFO about revenue trends, financial reports, and forecasts."""
+        from agents.departments.cfo.agent import CFOAgent
+        agent = CFOAgent(business_id)
+        resp = await agent.run(question)
+        return {"summary": resp.summary, "metrics": resp.metrics}
+
+    @tool
+    async def ask_cto(question: str) -> dict:
+        """Ask the CTO about platform health, workflow failures, and system reliability."""
+        from agents.departments.cto.agent import CTOAgent
+        agent = CTOAgent(business_id)
+        resp = await agent.run(question)
+        return {"summary": resp.summary, "metrics": resp.metrics}
+
+    return [get_business_state, ask_coo, ask_cro, ask_customer_success, create_recommendation, ask_cmo, ask_cfo, ask_cto]
