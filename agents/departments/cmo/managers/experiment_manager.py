@@ -10,7 +10,7 @@ from shared.schemas import AgentResponse
 class ExperimentManager(BaseAgent):
     def __init__(self, business_id: UUID):
         super().__init__(business_id)
-        self.llm = ChatOpenAI(model="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY", ""))
+        self.llm = self._build_dept_llm()
 
     async def run(self, question: str, context: dict | None = None) -> AgentResponse:
         state = context or {}

@@ -9,7 +9,7 @@ class WorkflowSpeedAgent:
 
     def __init__(self, business_id: UUID):
         self.business_id = business_id
-        self.llm = ChatOpenAI(model="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY", ""))
+        self.llm = self._build_dept_llm()
 
     async def run(self, task: str) -> dict:
         messages = [

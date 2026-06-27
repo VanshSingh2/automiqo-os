@@ -18,7 +18,7 @@ from backend.memory.supabase_client import get_supabase
 class CROAgent(BaseAgent):
     def __init__(self, business_id: UUID):
         super().__init__(business_id)
-        self.llm = ChatOpenAI(model="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY", ""))
+        self.llm = self._build_dept_llm()
 
     async def _query_managers(self, question: str, state: dict) -> dict:
         """Run all sub-managers in parallel and merge their summaries."""

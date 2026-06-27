@@ -17,6 +17,25 @@ class BaseAgent(ABC):
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
 
+    @staticmethod
+    def _build_dept_llm():
+        """Build LLM for dept/manager agents respecting DEPT_MODEL env var."""
+        import os
+        from langchain_openai import ChatOpenAI
+        model_str = os.getenv("DEPT_MODEL", "openai/gpt-4o-mini")
+        provider, _, model = model_str.partition("/")
+        if provider == "nvidia":
+            return ChatOpenAI(
+                model=model or "meta/llama-3.1-8b-instruct",
+                api_key=os.getenv("NVIDIA_API_KEY", ""),
+                base_url="https://integrate.api.nvidia.com/v1",
+            )
+        elif provider == "anthropic":
+            from langchain_anthropic import ChatAnthropic
+            return ChatAnthropic(model=model or "claude-haiku-4-5-20251001", api_key=os.getenv("ANTHROPIC_API_KEY", ""), max_tokens=2048)
+        else:
+            return ChatOpenAI(model=model or "gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY", ""))
+
     def _inject_biz(self, prompt: str) -> str:
         """Replace {business_name}, {industry}, {timezone} with real values from Supabase."""
         from backend.memory.supabase_client import get_supabase
