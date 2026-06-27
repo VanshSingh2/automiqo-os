@@ -2,73 +2,139 @@
   "name": "generate_daily_report",
   "nodes": [
     {
-      "parameters": {"httpMethod": "POST", "path": "generate_daily_report", "responseMode": "responseNode"},
-      "id": "wh-report", "name": "Webhook", "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2, "position": [240, 300]
-    },
-    {
+      "id": "1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        250,
+        300
+      ],
       "parameters": {
-        "operation": "select", "tableId": "businesses",
-        "filters": {"conditions": [{"keyName": "id", "condition": "equals", "keyValue": "={{ $json.business_id }}"}]}
-      },
-      "id": "val-report", "name": "Validate Business", "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1, "position": [460, 300],
-      "credentials": {"supabaseApi": {"name": "Supabase_Main"}}
+        "path": "generate_daily_report",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      }
     },
     {
-      "parameters": {"conditions": {"options": {"leftValue": "={{ $json.length }}", "operation": "largerEqual", "rightValue": 1}}},
-      "id": "chk-report", "name": "Business Exists?", "type": "n8n-nodes-base.if",
-      "typeVersion": 2, "position": [680, 300]
-    },
-    {
+      "id": "2",
+      "name": "Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        450,
+        300
+      ],
       "parameters": {
-        "operation": "insert", "tableId": "reports",
-        "dataToSend": "defineBelow",
-        "fieldsUi": {"fieldValues": [
-          {"fieldId": "business_id", "fieldValue": "={{ $json.business_id }}"},
-          {"fieldId": "report_date", "fieldValue": "={{ new Date().toISOString().split('T')[0] }}"},
-          {"fieldId": "content", "fieldValue": "={{ $('Webhook').item.json.parameters.report_data }}"},
-          {"fieldId": "status", "fieldValue": "completed"}
-        ]}
-      },
-      "id": "ins-report", "name": "Create Report", "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1, "position": [900, 200],
-      "credentials": {"supabaseApi": {"name": "Supabase_Main"}}
+        "jsCode": "const d = $input.first().json;\nif (!d.business_id) throw new Error(\"Missing business_id\");\nreturn [$input.first()];"
+      }
     },
     {
+      "id": "3",
+      "name": "Fetch Metrics",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        650,
+        300
+      ],
       "parameters": {
-        "operation": "update", "tableId": "tasks",
-        "filters": {"conditions": [{"keyName": "id", "condition": "equals", "keyValue": "={{ $('Webhook').item.json.task_id }}"}]},
-        "dataToSend": "defineBelow",
-        "fieldsUi": {"fieldValues": [
-          {"fieldId": "status", "fieldValue": "completed"},
-          {"fieldId": "completed_at", "fieldValue": "={{ new Date().toISOString() }}"}
-        ]}
-      },
-      "id": "upd-task-report", "name": "Mark Complete", "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1, "position": [1120, 200],
-      "credentials": {"supabaseApi": {"name": "Supabase_Main"}}
+        "url": "={{ $env.BACKEND_URL }}/metrics/{{ $json.business_id }}",
+        "method": "GET"
+      }
     },
     {
-      "parameters": {"respondWith": "json", "responseBody": "={\"success\": true, \"message\": \"Report generated\"}"},
-      "id": "res-report", "name": "Respond OK", "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1, "position": [1340, 200]
+      "id": "4",
+      "name": "Store Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        850,
+        300
+      ],
+      "parameters": {
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/reports",
+        "method": "POST",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ business_id: $input.first().json.business_id, report_type: \"daily\", data: $json, generated_at: new Date().toISOString() }) }}"
+      }
     },
     {
-      "parameters": {"respondWith": "json", "responseBody": "={\"success\": false, \"message\": \"Business not found\"}", "responseCode": 404},
-      "id": "err-report", "name": "Error", "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1, "position": [900, 420]
+      "id": "5",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ status: \"ok\", report: \"generated\" }"
+      }
     }
   ],
   "connections": {
-    "Webhook": {"main": [[{"node": "Validate Business", "type": "main", "index": 0}]]},
-    "Validate Business": {"main": [[{"node": "Business Exists?", "type": "main", "index": 0}]]},
-    "Business Exists?": {"main": [
-      [{"node": "Create Report", "type": "main", "index": 0}],
-      [{"node": "Error", "type": "main", "index": 0}]
-    ]},
-    "Create Report": {"main": [[{"node": "Mark Complete", "type": "main", "index": 0}]]},
-    "Mark Complete": {"main": [[{"node": "Respond OK", "type": "main", "index": 0}]]}
-  ],
-  "settings": {"executionOrder": "v1"}
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate": {
+      "main": [
+        [
+          {
+            "node": "Fetch Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Metrics": {
+      "main": [
+        [
+          {
+            "node": "Store Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Report": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
 }

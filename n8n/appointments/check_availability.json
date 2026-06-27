@@ -1,212 +1,220 @@
-﻿{
-    "settings":  {
-                     "executionOrder":  "v1"
-                 },
-    "name":  "check_availability",
-    "connections":  {
-                        "Webhook":  {
-                                        "main":  [
-                                                     {
-                                                         "node":  "Validate Business",
-                                                         "type":  "main",
-                                                         "index":  0
-                                                     }
-                                                 ]
-                                    },
-                        "Validate Business":  {
-                                                  "main":  [
-                                                               {
-                                                                   "node":  "Business Exists?",
-                                                                   "type":  "main",
-                                                                   "index":  0
-                                                               }
-                                                           ]
-                                              },
-                        "Business Exists?":  {
-                                                 "main":  [
-                                                              [
-                                                                  {
-                                                                      "node":  "Execute",
-                                                                      "type":  "main",
-                                                                      "index":  0
-                                                                  }
-                                                              ],
-                                                              [
-                                                                  {
-                                                                      "node":  "Error",
-                                                                      "type":  "main",
-                                                                      "index":  0
-                                                                  }
-                                                              ]
-                                                          ]
-                                             },
-                        "Execute":  {
-                                        "main":  [
-                                                     {
-                                                         "node":  "Mark Complete",
-                                                         "type":  "main",
-                                                         "index":  0
-                                                     }
-                                                 ]
-                                    },
-                        "Mark Complete":  {
-                                              "main":  [
-                                                           {
-                                                               "node":  "Respond",
-                                                               "type":  "main",
-                                                               "index":  0
-                                                           }
-                                                       ]
-                                          }
-                    },
-    "nodes":  [
-                  {
-                      "id":  "wh-avail",
-                      "name":  "Webhook",
-                      "type":  "n8n-nodes-base.webhook",
-                      "position":  [
-                                       240,
-                                       300
-                                   ],
-                      "parameters":  {
-                                         "path":  "check_availability",
-                                         "responseMode":  "responseNode",
-                                         "httpMethod":  "POST"
-                                     },
-                      "typeVersion":  2
-                  },
-                  {
-                      "id":  "val-avail",
-                      "name":  "Validate Business",
-                      "credentials":  {
-                                          "supabaseApi":  {
-                                                              "name":  "Supabase_Main"
-                                                          }
-                                      },
-                      "type":  "n8n-nodes-base.supabase",
-                      "position":  [
-                                       460,
-                                       300
-                                   ],
-                      "parameters":  {
-                                         "tableId":  "businesses",
-                                         "operation":  "select",
-                                         "filters":  {
-                                                         "conditions":  [
-                                                                            {
-                                                                                "keyValue":  "={{ $json.business_id }}",
-                                                                                "condition":  "equals",
-                                                                                "keyName":  "id"
-                                                                            }
-                                                                        ]
-                                                     }
-                                     },
-                      "typeVersion":  1
-                  },
-                  {
-                      "id":  "chk-avail",
-                      "name":  "Business Exists?",
-                      "type":  "n8n-nodes-base.if",
-                      "position":  [
-                                       680,
-                                       300
-                                   ],
-                      "parameters":  {
-                                         "conditions":  {
-                                                            "options":  {
-                                                                            "operation":  "largerEqual",
-                                                                            "rightValue":  1,
-                                                                            "leftValue":  "={{ $json.length }}"
-                                                                        }
-                                                        }
-                                     },
-                      "typeVersion":  2
-                  },
-                  {
-                      "parameters":  {
-                                         "method":  null,
-                                         "url":  null,
-                                         "genericAuthType":  "httpHeaderAuth",
-                                         "authentication":  "generic"
-                                     },
-                      "id":  "http-avail",
-                      "type":  "n8n-nodes-base.httpRequest",
-                      "name":  "Execute",
-                      "position":  [
-                                       900,
-                                       200
-                                   ],
-                      "typeVersion":  1
-                  },
-                  {
-                      "id":  "upd-avail",
-                      "name":  "Mark Complete",
-                      "credentials":  {
-                                          "supabaseApi":  {
-                                                              "name":  "Supabase_Main"
-                                                          }
-                                      },
-                      "type":  "n8n-nodes-base.supabase",
-                      "position":  [
-                                       1340,
-                                       200
-                                   ],
-                      "parameters":  {
-                                         "tableId":  "tasks",
-                                         "operation":  "update",
-                                         "fieldsUi":  {
-                                                          "fieldValues":  [
-                                                                              {
-                                                                                  "fieldId":  "status",
-                                                                                  "fieldValue":  "completed"
-                                                                              },
-                                                                              {
-                                                                                  "fieldId":  "completed_at",
-                                                                                  "fieldValue":  "={{ new Date().toISOString() }}"
-                                                                              }
-                                                                          ]
-                                                      },
-                                         "dataToSend":  "defineBelow",
-                                         "filters":  {
-                                                         "conditions":  [
-                                                                            {
-                                                                                "keyValue":  "={{ $(\u0027Webhook\u0027).item.json.task_id }}",
-                                                                                "condition":  "equals",
-                                                                                "keyName":  "id"
-                                                                            }
-                                                                        ]
-                                                     }
-                                     },
-                      "typeVersion":  1
-                  },
-                  {
-                      "id":  "res-avail",
-                      "name":  "Respond",
-                      "type":  "n8n-nodes-base.respondToWebhook",
-                      "position":  [
-                                       1560,
-                                       200
-                                   ],
-                      "parameters":  {
-                                         "respondWith":  "json",
-                                         "responseBody":  "={\"success\": true, \"message\": \"Done\"}"
-                                     },
-                      "typeVersion":  1
-                  },
-                  {
-                      "id":  "err-avail",
-                      "name":  "Error",
-                      "type":  "n8n-nodes-base.respondToWebhook",
-                      "position":  [
-                                       900,
-                                       420
-                                   ],
-                      "parameters":  {
-                                         "responseBody":  "={\"success\": false, \"message\": \"Business not found\"}",
-                                         "respondWith":  "json",
-                                         "responseCode":  404
-                                     },
-                      "typeVersion":  1
-                  }
-              ]
+{
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "name": "check_availability",
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Business",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Business": {
+      "main": [
+        [
+          {
+            "node": "Business Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Business Exists?": {
+      "main": [
+        [
+          {
+            "node": "Execute",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute": {
+      "main": [
+        [
+          {
+            "node": "Mark Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Complete": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "id": "wh-avail",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "path": "check_availability",
+        "responseMode": "responseNode",
+        "httpMethod": "POST"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "val-avail",
+      "name": "Validate Business",
+      "credentials": {
+        "supabaseApi": {
+          "name": "Supabase_Main"
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "tableId": "businesses",
+        "operation": "select",
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "={{ $json.business_id }}",
+              "condition": "equals",
+              "keyName": "id"
+            }
+          ]
+        }
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "chk-avail",
+      "name": "Business Exists?",
+      "type": "n8n-nodes-base.if",
+      "position": [
+        680,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "operation": "largerEqual",
+            "rightValue": 1,
+            "leftValue": "={{ $json.length }}"
+          }
+        }
+      },
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "method": null,
+        "url": null,
+        "genericAuthType": "httpHeaderAuth",
+        "authentication": "generic"
+      },
+      "id": "http-avail",
+      "type": "n8n-nodes-base.httpRequest",
+      "name": "Execute",
+      "position": [
+        900,
+        200
+      ],
+      "typeVersion": 1
+    },
+    {
+      "id": "upd-avail",
+      "name": "Mark Complete",
+      "credentials": {
+        "supabaseApi": {
+          "name": "Supabase_Main"
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "position": [
+        1340,
+        200
+      ],
+      "parameters": {
+        "tableId": "tasks",
+        "operation": "update",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "completed"
+            },
+            {
+              "fieldId": "completed_at",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "dataToSend": "defineBelow",
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "={{ $('Webhook').item.json.task_id }}",
+              "condition": "equals",
+              "keyName": "id"
+            }
+          ]
+        }
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "res-avail",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        1560,
+        200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"message\": \"Done\"}"
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "err-avail",
+      "name": "Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        900,
+        420
+      ],
+      "parameters": {
+        "responseBody": "={\"success\": false, \"message\": \"Business not found\"}",
+        "respondWith": "json",
+        "responseCode": 404
+      },
+      "typeVersion": 1
+    }
+  ]
 }

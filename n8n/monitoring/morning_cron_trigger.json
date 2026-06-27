@@ -1,71 +1,75 @@
-﻿{
-    "settings":  {
-                     "executionOrder":  "v1"
-                 },
-    "name":  "morning_cron_trigger",
-    "connections":  {
-                        "Monitor":  {
-                                        "main":  [
-                                                     {
-                                                         "node":  "Respond",
-                                                         "type":  "main",
-                                                         "index":  0
-                                                     }
-                                                 ]
-                                    },
-                        "Cron":  {
-                                     "main":  [
-                                                  {
-                                                      "node":  "Monitor",
-                                                      "type":  "main",
-                                                      "index":  0
-                                                  }
-                                              ]
-                                 }
-                    },
-    "nodes":  [
-                  {
-                      "id":  "cron-cron",
-                      "name":  "Cron",
-                      "type":  "n8n-nodes-base.cron",
-                      "position":  [
-                                       240,
-                                       300
-                                   ],
-                      "parameters":  {
-                                         "cronExpression":  "0 7 * * *"
-                                     },
-                      "typeVersion":  1
-                  },
-                  {
-                      "parameters":  {
-                                         "method":  "GET",
-                                         "url":  "http://backend:8000/check",
-                                         "genericAuthType":  "httpHeaderAuth",
-                                         "authentication":  "generic"
-                                     },
-                      "id":  "mon-cron",
-                      "type":  "n8n-nodes-base.httpRequest",
-                      "name":  "Monitor",
-                      "position":  [
-                                       900,
-                                       200
-                                   ],
-                      "typeVersion":  1
-                  },
-                  {
-                      "id":  "res-cron",
-                      "name":  "Respond",
-                      "type":  "n8n-nodes-base.respondToWebhook",
-                      "position":  [
-                                       1560,
-                                       200
-                                   ],
-                      "parameters":  {
-                                         "respondWith":  "json",
-                                         "responseBody":  "={\"success\": true}"
-                                     },
-                      "typeVersion":  1
-                  }
-              ]
+{
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "name": "morning_cron_trigger",
+  "connections": {
+    "Monitor": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "Monitor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "id": "cron-cron",
+      "name": "Cron",
+      "type": "n8n-nodes-base.cron",
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "cronExpression": "0 7 * * *"
+      },
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://backend:8000/check",
+        "genericAuthType": "httpHeaderAuth",
+        "authentication": "generic"
+      },
+      "id": "mon-cron",
+      "type": "n8n-nodes-base.httpRequest",
+      "name": "Monitor",
+      "position": [
+        900,
+        200
+      ],
+      "typeVersion": 1
+    },
+    {
+      "id": "res-cron",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        1560,
+        200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true}"
+      },
+      "typeVersion": 1
+    }
+  ]
 }
