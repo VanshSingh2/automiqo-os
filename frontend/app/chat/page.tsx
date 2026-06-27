@@ -49,7 +49,7 @@ export default function ChatPage() {
         setStreaming(false);
       },
       (error) => {
-        setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `Error: ${error}. Make sure ANTHROPIC_API_KEY is set.`, error: true }]);
+        setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: `Error: ${error}. Make sure backend is running and OPENAI_API_KEY is set in .env`, error: true }]);
         setStreaming(false);
       }
     );
