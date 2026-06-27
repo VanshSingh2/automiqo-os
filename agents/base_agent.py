@@ -36,6 +36,23 @@ class BaseAgent(ABC):
         else:
             return ChatOpenAI(model=model or "gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY", ""))
 
+    @staticmethod
+    def _parse_response(content: str) -> "AgentResponse":
+        """Parse LLM response, stripping markdown code fences if present."""
+        import re, json
+        m = re.search(r"```[\w]*\s*([\s\S]*?)```", content)
+        clean = m.group(1).strip() if m else content.strip()
+        try:
+            parsed = json.loads(clean)
+            return AgentResponse(
+                status=parsed.get("status", "ok"),
+                summary=parsed.get("summary", clean),
+                metrics=parsed.get("metrics", {}),
+                recommendations=parsed.get("recommendations", []),
+            )
+        except Exception:
+            return AgentResponse(status="ok", summary=content.strip())
+
     def _inject_biz(self, prompt: str) -> str:
         """Replace {business_name}, {industry}, {timezone} with real values from Supabase."""
         from backend.memory.supabase_client import get_supabase

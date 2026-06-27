@@ -2,7 +2,6 @@ import os
 import json
 import asyncio
 from uuid import UUID
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from agents.base_agent import BaseAgent
 from shared.schemas import AgentResponse
@@ -57,20 +56,6 @@ class CFOAgent(BaseAgent):
             HumanMessage(content=f"Data: {json.dumps(state)}\n\nQuestion: {question}"),
         ]
         response = await self.llm.ainvoke(messages)
-        try:
-
-        # Strip markdown code fences
-        _c = response.content.strip()
-        if _c.startswith('```'):
-            parts = _c.split('```')
-            _c = parts[2].strip() if len(parts) >= 3 else parts[-1].strip()
-            _c = _c.lstrip('json').strip()
-                    parsed = json.loads(_c)
-            return AgentResponse(
-                status=parsed.get("status", "ok"),
-                summary=parsed.get("summary", response.content),
-                metrics={**state, **parsed.get("metrics", {})},
-                recommendations=parsed.get("recommendations", []),
-            )
-        except Exception:
-            return AgentResponse(status="ok", summary=response.content, metrics=state)
+        result = self._parse_response(response.content)
+        result.metrics = {**state, **result.metrics}
+        return result

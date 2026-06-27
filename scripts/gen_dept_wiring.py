@@ -7,7 +7,6 @@ DEPT_TEMPLATE = '''import os
 import json
 import asyncio
 from uuid import UUID
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from agents.base_agent import BaseAgent
 from shared.schemas import AgentResponse
@@ -17,7 +16,7 @@ from shared.schemas import AgentResponse
 class {class_name}(BaseAgent):
     def __init__(self, business_id: UUID):
         super().__init__(business_id)
-        self.llm = ChatOpenAI(model="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY", ""))
+        self.llm = self._build_dept_llm()
 
     async def _query_managers(self, question: str, state: dict) -> dict:
         """Run all sub-managers in parallel and merge their summaries."""
@@ -46,16 +45,9 @@ class {class_name}(BaseAgent):
             HumanMessage(content=f"Data: {{json.dumps(state)}}\\n\\nQuestion: {{question}}"),
         ]
         response = await self.llm.ainvoke(messages)
-        try:
-            parsed = json.loads(response.content)
-            return AgentResponse(
-                status=parsed.get("status", "ok"),
-                summary=parsed.get("summary", response.content),
-                metrics={{**state, **parsed.get("metrics", {{}})}},
-                recommendations=parsed.get("recommendations", []),
-            )
-        except Exception:
-            return AgentResponse(status="ok", summary=response.content, metrics=state)
+        result = self._parse_response(response.content)
+        result.metrics = {{**state, **result.metrics}}
+        return result
 '''
 
 depts = [

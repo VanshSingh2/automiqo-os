@@ -103,21 +103,4 @@ class CEOAgent(BaseAgent):
         if isinstance(content, list):
             content = " ".join(c.get("text", "") if isinstance(c, dict) else str(c) for c in content)
 
-        # Strip markdown code fences the LLM sometimes wraps around JSON
-        stripped = content.strip()
-        if stripped.startswith("```"):
-            stripped = stripped.split("```", 2)[-1] if stripped.count("```") >= 2 else stripped
-            stripped = stripped.lstrip("json").strip().rstrip("`").strip()
-        else:
-            stripped = content
-
-        try:
-            parsed = json.loads(stripped)
-            return AgentResponse(
-                status=parsed.get("status", "ok"),
-                summary=parsed.get("summary", content),
-                metrics=parsed.get("metrics", {}),
-                recommendations=parsed.get("recommendations", []),
-            )
-        except Exception:
-            return AgentResponse(status="ok", summary=str(content))
+        return self._parse_response(content)

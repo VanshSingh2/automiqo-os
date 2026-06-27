@@ -44,20 +44,4 @@ class ChiefOfStaffAgent(BaseAgent):
             HumanMessage(content=f"Data: {json.dumps(state)}\n\nQuestion: {question}"),
         ]
         response = await self.llm.ainvoke(messages)
-        try:
-
-        # Strip markdown code fences
-        _c = response.content.strip()
-        if _c.startswith('```'):
-            parts = _c.split('```')
-            _c = parts[2].strip() if len(parts) >= 3 else parts[-1].strip()
-            _c = _c.lstrip('json').strip()
-                    parsed = json.loads(_c)
-            return AgentResponse(
-                status=parsed.get("status", "ok"),
-                summary=parsed.get("briefing_context", parsed.get("summary", response.content)),
-                metrics=state,
-                recommendations=parsed.get("conflicts", []),
-            )
-        except Exception:
-            return AgentResponse(status="ok", summary=response.content, metrics=state)
+        return self._parse_response(response.content)
