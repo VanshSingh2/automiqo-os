@@ -39,7 +39,14 @@ class CTOAgent(BaseAgent):
         ]
         response = await self.llm.ainvoke(messages)
         try:
-            parsed = json.loads(response.content)
+
+        # Strip markdown code fences
+        _c = response.content.strip()
+        if _c.startswith('```'):
+            parts = _c.split('```')
+            _c = parts[2].strip() if len(parts) >= 3 else parts[-1].strip()
+            _c = _c.lstrip('json').strip()
+                    parsed = json.loads(_c)
             return AgentResponse(status=parsed.get("status", "ok"), metrics=state,
                                  summary=parsed.get("summary", ""), recommendations=parsed.get("recommendations", []))
         except Exception:
