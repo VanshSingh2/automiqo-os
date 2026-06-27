@@ -29,7 +29,7 @@ class CMOAgent(BaseAgent):
         except Exception:
             prompt = "You are the CMO. Manage campaigns, content, and lead generation."
         messages = [
-            SystemMessage(content=prompt),
+            SystemMessage(content=self._inject_biz(prompt)),
             HumanMessage(content=f"Data: {json.dumps(state)}\n\nQuestion: {question}"),
         ]
         response = await self.llm.ainvoke(messages)

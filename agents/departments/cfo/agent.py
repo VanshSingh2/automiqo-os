@@ -38,7 +38,7 @@ class CFOAgent(BaseAgent):
         except Exception:
             prompt = "You are the CFO. Analyze revenue, identify trends, flag financial risks."
         messages = [
-            SystemMessage(content=prompt),
+            SystemMessage(content=self._inject_biz(prompt)),
             HumanMessage(content=f"Data: {json.dumps(state)}\n\nQuestion: {question}"),
         ]
         response = await self.llm.ainvoke(messages)

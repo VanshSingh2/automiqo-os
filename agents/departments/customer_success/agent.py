@@ -26,8 +26,17 @@ class CustomerSuccessAgent(BaseAgent):
         except Exception:
             prompt = "You are the Customer Success Director. Monitor complaints and churn."
         messages = [
-            SystemMessage(content=prompt),
+            SystemMessage(content=self._inject_biz(prompt)),
             HumanMessage(content=f"Data: {json.dumps(state)}\n\nQuestion: {question}"),
         ]
         response = await self.llm.ainvoke(messages)
-        return AgentResponse(status="ok", summary=response.content, metrics=state)
+        try:
+            parsed = json.loads(response.content)
+            return AgentResponse(
+                status=parsed.get("status", "ok"),
+                summary=parsed.get("summary", response.content),
+                metrics={**state, **parsed.get("metrics", {})},
+                recommendations=parsed.get("recommendations", []),
+            )
+        except Exception:
+            return AgentResponse(status="ok", summary=response.content, metrics=state)

@@ -34,7 +34,7 @@ class CTOAgent(BaseAgent):
         except Exception:
             prompt = "You are the CTO. Monitor platform health, workflow reliability, and system performance."
         messages = [
-            SystemMessage(content=prompt),
+            SystemMessage(content=self._inject_biz(prompt)),
             HumanMessage(content=f"Data: {json.dumps(state)}\n\nQuestion: {question}"),
         ]
         response = await self.llm.ainvoke(messages)

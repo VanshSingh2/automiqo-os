@@ -74,4 +74,24 @@ def make_ceo_tools(business_id: UUID):
         resp = await agent.run(question)
         return {"summary": resp.summary, "metrics": resp.metrics}
 
-    return [get_business_state, ask_coo, ask_cro, ask_customer_success, create_recommendation, ask_cmo, ask_cfo, ask_cto]
+    @tool
+    async def ask_chief_of_staff(question: str) -> dict:
+        """Ask Chief of Staff about active tasks, conflicts, and coordination issues."""
+        from agents.executive.chief_of_staff.agent import ChiefOfStaffAgent
+        agent = ChiefOfStaffAgent(business_id)
+        resp = await agent.run(question)
+        return {"summary": resp.summary, "metrics": resp.metrics}
+
+    @tool
+    async def ask_learning_director(question: str) -> dict:
+        """Ask Learning Director about mistakes, knowledge gaps, and improvement opportunities."""
+        from agents.departments.learning.agent import LearningDirectorAgent
+        agent = LearningDirectorAgent(business_id)
+        resp = await agent.run(question)
+        return {"summary": resp.summary, "metrics": resp.metrics}
+
+    return [
+        get_business_state, ask_coo, ask_cro, ask_customer_success,
+        create_recommendation, ask_cmo, ask_cfo, ask_cto,
+        ask_chief_of_staff, ask_learning_director,
+    ]

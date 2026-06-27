@@ -381,3 +381,116 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='notifications_log' AND policyname='service_role_all') THEN
     CREATE POLICY "service_role_all" ON notifications_log FOR ALL USING (true); END IF;
 END $$;
+
+-- ============================================
+-- SPRINT 4+ TABLES
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS owners (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT UNIQUE NOT NULL,
+  hashed_password TEXT NOT NULL,
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS success_scripts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  trigger TEXT,
+  response TEXT,
+  outcome TEXT,
+  confidence NUMERIC DEFAULT 0,
+  used_count INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS failure_patterns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  pattern TEXT,
+  what_failed TEXT,
+  root_cause TEXT,
+  fix_applied BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS agent_decisions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  agent_name TEXT,
+  decision TEXT,
+  confidence NUMERIC DEFAULT 0,
+  reasoning TEXT,
+  alternatives JSONB DEFAULT '[]',
+  outcome TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS equipment (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  name TEXT,
+  category TEXT,
+  last_maintenance DATE,
+  next_maintenance DATE,
+  status TEXT DEFAULT 'operational',
+  notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS resources (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  name TEXT,
+  type TEXT,
+  capacity INTEGER DEFAULT 1,
+  available BOOLEAN DEFAULT true,
+  notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS locations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  parent_business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  name TEXT,
+  address TEXT,
+  phone TEXT,
+  timezone TEXT DEFAULT 'America/New_York',
+  active BOOLEAN DEFAULT true
+);
+
+CREATE TABLE IF NOT EXISTS events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  event_type TEXT,
+  payload JSONB DEFAULT '{}',
+  listeners_notified TEXT[] DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE owners ENABLE ROW LEVEL SECURITY;
+ALTER TABLE success_scripts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE failure_patterns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agent_decisions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE equipment ENABLE ROW LEVEL SECURITY;
+ALTER TABLE resources ENABLE ROW LEVEL SECURITY;
+ALTER TABLE locations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE events ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='owners' AND policyname='service_role_all') THEN
+    CREATE POLICY "service_role_all" ON owners FOR ALL USING (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='success_scripts' AND policyname='service_role_all') THEN
+    CREATE POLICY "service_role_all" ON success_scripts FOR ALL USING (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='failure_patterns' AND policyname='service_role_all') THEN
+    CREATE POLICY "service_role_all" ON failure_patterns FOR ALL USING (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='agent_decisions' AND policyname='service_role_all') THEN
+    CREATE POLICY "service_role_all" ON agent_decisions FOR ALL USING (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='equipment' AND policyname='service_role_all') THEN
+    CREATE POLICY "service_role_all" ON equipment FOR ALL USING (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='resources' AND policyname='service_role_all') THEN
+    CREATE POLICY "service_role_all" ON resources FOR ALL USING (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='locations' AND policyname='service_role_all') THEN
+    CREATE POLICY "service_role_all" ON locations FOR ALL USING (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='events' AND policyname='service_role_all') THEN
+    CREATE POLICY "service_role_all" ON events FOR ALL USING (true); END IF;
+END $$;

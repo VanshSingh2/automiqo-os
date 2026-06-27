@@ -20,9 +20,7 @@ class COOAgent(BaseAgent):
             prompt = self._load_prompt("coo")
         except Exception:
             prompt = "You are the COO. Monitor operations, appointments, and staff."
-        system = prompt.replace("{business_name}", "Your Business") \
-                       .replace("{industry}", "service") \
-                       .replace("{timezone}", "America/New_York")
+        system = self._inject_biz(prompt)
         messages = [
             SystemMessage(content=system),
             HumanMessage(content=f"Context: {json.dumps(state)}\n\nQuestion: {question}"),

@@ -16,3 +16,19 @@ class BaseAgent(ABC):
         path = os.path.join(os.path.dirname(__file__), "..", "prompts", f"{name}.md")
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
+
+    def _inject_biz(self, prompt: str) -> str:
+        """Replace {business_name}, {industry}, {timezone} with real values from Supabase."""
+        from backend.memory.supabase_client import get_supabase
+        try:
+            result = get_supabase().table("businesses").select("name,industry,timezone") \
+                .eq("id", str(self.business_id)).limit(1).execute()
+            biz = result.data[0] if result.data else {}
+        except Exception:
+            biz = {}
+        from datetime import datetime, timezone as tz
+        return prompt \
+            .replace("{business_name}", biz.get("name", "Your Business")) \
+            .replace("{industry}", biz.get("industry", "service")) \
+            .replace("{timezone}", biz.get("timezone", "America/New_York")) \
+            .replace("{date}", datetime.now(tz.utc).strftime("%Y-%m-%d"))

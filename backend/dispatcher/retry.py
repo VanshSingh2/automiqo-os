@@ -16,10 +16,14 @@ async def retry_with_backoff(url: str, payload: dict, max_retries: int = 3) -> d
                 result = resp.json()
 
                 from backend.memory.supabase_client import get_supabase
+                from datetime import datetime, timezone
+                now = datetime.now(timezone.utc).isoformat()
                 get_supabase().table("tasks").update({
                     "status": "completed",
                     "result": result,
                     "retries": attempt,
+                    "executed_at": now,
+                    "completed_at": now,
                 }).eq("id", payload["task_id"]).execute()
 
                 return result

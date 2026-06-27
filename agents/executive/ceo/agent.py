@@ -70,10 +70,14 @@ class CEOAgent(BaseAgent):
             return END
 
         def call_model(state: CEOState):
+            from backend.memory.supabase_client import get_supabase
+            biz_result = get_supabase().table("businesses").select("name,industry,timezone") \
+                .eq("id", state["business_id"]).limit(1).execute()
+            biz = biz_result.data[0] if biz_result.data else {}
             prompt = self._load_prompt("ceo")
-            system = prompt.replace("{business_name}", "Your Business") \
-                           .replace("{industry}", "service") \
-                           .replace("{timezone}", "America/New_York") \
+            system = prompt.replace("{business_name}", biz.get("name", "Your Business")) \
+                           .replace("{industry}", biz.get("industry", "service")) \
+                           .replace("{timezone}", biz.get("timezone", "America/New_York")) \
                            .replace("{date}", datetime.now(timezone.utc).strftime("%Y-%m-%d"))
             messages = [SystemMessage(content=system)] + state["messages"]
             response = self.llm_with_tools.invoke(messages)
