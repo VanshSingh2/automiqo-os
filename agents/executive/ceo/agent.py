@@ -2,8 +2,7 @@ import os
 import json
 from uuid import UUID
 from datetime import datetime, timezone
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage, AIMessage
+from langchain_core.messages import HumanMessage, SystemMessage, BaseMessage
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from typing import TypedDict, Annotated
@@ -12,6 +11,41 @@ import operator
 from agents.base_agent import BaseAgent
 from agents.executive.ceo.tools import make_ceo_tools
 from shared.schemas import AgentResponse
+
+# ── Model selection ──────────────────────────────────────────────
+# Set CEO_MODEL in .env to switch:
+#   openai/gpt-4.1          (default)
+#   openai/gpt-4o
+#   anthropic/claude-sonnet-4-6
+#   anthropic/claude-opus-4-8
+#   nvidia/nvidia/llama-3.1-nemotron-ultra-253b-v1
+#   nvidia/<any-nvidia-nim-model>
+
+def _build_llm(tools):
+    provider, _, model = os.getenv("CEO_MODEL", "openai/gpt-4.1").partition("/")
+
+    if provider == "anthropic":
+        from langchain_anthropic import ChatAnthropic
+        llm = ChatAnthropic(
+            model=model or "claude-sonnet-4-6",
+            api_key=os.getenv("ANTHROPIC_API_KEY", ""),
+            max_tokens=4096,
+        )
+    elif provider == "nvidia":
+        from langchain_openai import ChatOpenAI
+        llm = ChatOpenAI(
+            model=model or "nvidia/llama-3.1-nemotron-ultra-253b-v1",
+            api_key=os.getenv("NVIDIA_API_KEY", ""),
+            base_url="https://integrate.api.nvidia.com/v1",
+        )
+    else:  # openai (default)
+        from langchain_openai import ChatOpenAI
+        llm = ChatOpenAI(
+            model=model or "gpt-4.1",
+            api_key=os.getenv("OPENAI_API_KEY", ""),
+        )
+
+    return llm.bind_tools(tools)
 
 
 class CEOState(TypedDict):
@@ -22,12 +56,8 @@ class CEOState(TypedDict):
 class CEOAgent(BaseAgent):
     def __init__(self, business_id: UUID):
         super().__init__(business_id)
-        self.llm = ChatOpenAI(
-            model="gpt-4.1",
-            api_key=os.getenv("OPENAI_API_KEY", ""),
-        )
         self.tools = make_ceo_tools(business_id)
-        self.llm_with_tools = self.llm.bind_tools(self.tools)
+        self.llm_with_tools = _build_llm(self.tools)
         self._graph = self._build_graph()
 
     def _build_graph(self):
