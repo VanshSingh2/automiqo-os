@@ -365,10 +365,19 @@ ALTER TABLE purchase_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_costs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications_log ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "service_role_all" ON internal_tasks FOR ALL USING (true);
-CREATE POLICY IF NOT EXISTS "service_role_all" ON audit_log FOR ALL USING (true);
-CREATE POLICY IF NOT EXISTS "service_role_all" ON experiments FOR ALL USING (true);
-CREATE POLICY IF NOT EXISTS "service_role_all" ON vendors FOR ALL USING (true);
-CREATE POLICY IF NOT EXISTS "service_role_all" ON purchase_orders FOR ALL USING (true);
-CREATE POLICY IF NOT EXISTS "service_role_all" ON ai_costs FOR ALL USING (true);
-CREATE POLICY IF NOT EXISTS "service_role_all" ON notifications_log FOR ALL USING (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='internal_tasks' AND policyname='service_role_all') THEN
+    CREATE POLICY "service_role_all" ON internal_tasks FOR ALL USING (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='audit_log' AND policyname='service_role_all') THEN
+    CREATE POLICY "service_role_all" ON audit_log FOR ALL USING (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='experiments' AND policyname='service_role_all') THEN
+    CREATE POLICY "service_role_all" ON experiments FOR ALL USING (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='vendors' AND policyname='service_role_all') THEN
+    CREATE POLICY "service_role_all" ON vendors FOR ALL USING (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='purchase_orders' AND policyname='service_role_all') THEN
+    CREATE POLICY "service_role_all" ON purchase_orders FOR ALL USING (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='ai_costs' AND policyname='service_role_all') THEN
+    CREATE POLICY "service_role_all" ON ai_costs FOR ALL USING (true); END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='notifications_log' AND policyname='service_role_all') THEN
+    CREATE POLICY "service_role_all" ON notifications_log FOR ALL USING (true); END IF;
+END $$;
