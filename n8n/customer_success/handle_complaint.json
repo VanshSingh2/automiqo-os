@@ -1,0 +1,216 @@
+﻿{
+    "settings":  {
+                     "executionOrder":  "v1"
+                 },
+    "name":  "handle_complaint",
+    "connections":  {
+                        "Webhook":  {
+                                        "main":  [
+                                                     {
+                                                         "node":  "Validate Business",
+                                                         "type":  "main",
+                                                         "index":  0
+                                                     }
+                                                 ]
+                                    },
+                        "Validate Business":  {
+                                                  "main":  [
+                                                               {
+                                                                   "node":  "Business Exists?",
+                                                                   "type":  "main",
+                                                                   "index":  0
+                                                               }
+                                                           ]
+                                              },
+                        "Business Exists?":  {
+                                                 "main":  [
+                                                              [
+                                                                  {
+                                                                      "node":  "Send SMS",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ],
+                                                              [
+                                                                  {
+                                                                      "node":  "Error",
+                                                                      "type":  "main",
+                                                                      "index":  0
+                                                                  }
+                                                              ]
+                                                          ]
+                                             },
+                        "Send SMS":  {
+                                         "main":  [
+                                                      {
+                                                          "node":  "Mark Complete",
+                                                          "type":  "main",
+                                                          "index":  0
+                                                      }
+                                                  ]
+                                     },
+                        "Mark Complete":  {
+                                              "main":  [
+                                                           {
+                                                               "node":  "Respond",
+                                                               "type":  "main",
+                                                               "index":  0
+                                                           }
+                                                       ]
+                                          }
+                    },
+    "nodes":  [
+                  {
+                      "id":  "wh-comp",
+                      "name":  "Webhook",
+                      "type":  "n8n-nodes-base.webhook",
+                      "position":  [
+                                       240,
+                                       300
+                                   ],
+                      "parameters":  {
+                                         "path":  "handle_complaint",
+                                         "responseMode":  "responseNode",
+                                         "httpMethod":  "POST"
+                                     },
+                      "typeVersion":  2
+                  },
+                  {
+                      "id":  "val-comp",
+                      "name":  "Validate Business",
+                      "credentials":  {
+                                          "supabaseApi":  {
+                                                              "name":  "Supabase_Main"
+                                                          }
+                                      },
+                      "type":  "n8n-nodes-base.supabase",
+                      "position":  [
+                                       460,
+                                       300
+                                   ],
+                      "parameters":  {
+                                         "tableId":  "businesses",
+                                         "operation":  "select",
+                                         "filters":  {
+                                                         "conditions":  [
+                                                                            {
+                                                                                "keyValue":  "={{ $json.business_id }}",
+                                                                                "condition":  "equals",
+                                                                                "keyName":  "id"
+                                                                            }
+                                                                        ]
+                                                     }
+                                     },
+                      "typeVersion":  1
+                  },
+                  {
+                      "id":  "chk-comp",
+                      "name":  "Business Exists?",
+                      "type":  "n8n-nodes-base.if",
+                      "position":  [
+                                       680,
+                                       300
+                                   ],
+                      "parameters":  {
+                                         "conditions":  {
+                                                            "options":  {
+                                                                            "operation":  "largerEqual",
+                                                                            "rightValue":  1,
+                                                                            "leftValue":  "={{ $json.length }}"
+                                                                        }
+                                                        }
+                                     },
+                      "typeVersion":  2
+                  },
+                  {
+                      "parameters":  {
+                                         "from":  "={{ $env.TWILIO_PHONE_NUMBER }}",
+                                         "to":  "={{ $json.parameters.customer_phone }}",
+                                         "message":  "Message from Automiqo"
+                                     },
+                      "id":  "sms-comp",
+                      "type":  "n8n-nodes-base.twilio",
+                      "credentials":  {
+                                          "twilioApi":  {
+                                                            "name":  "Twilio_Production"
+                                                        }
+                                      },
+                      "name":  "Send SMS",
+                      "position":  [
+                                       900,
+                                       200
+                                   ],
+                      "typeVersion":  1
+                  },
+                  {
+                      "id":  "upd-comp",
+                      "name":  "Mark Complete",
+                      "credentials":  {
+                                          "supabaseApi":  {
+                                                              "name":  "Supabase_Main"
+                                                          }
+                                      },
+                      "type":  "n8n-nodes-base.supabase",
+                      "position":  [
+                                       1340,
+                                       200
+                                   ],
+                      "parameters":  {
+                                         "tableId":  "tasks",
+                                         "operation":  "update",
+                                         "fieldsUi":  {
+                                                          "fieldValues":  [
+                                                                              {
+                                                                                  "fieldId":  "status",
+                                                                                  "fieldValue":  "completed"
+                                                                              },
+                                                                              {
+                                                                                  "fieldId":  "completed_at",
+                                                                                  "fieldValue":  "={{ new Date().toISOString() }}"
+                                                                              }
+                                                                          ]
+                                                      },
+                                         "dataToSend":  "defineBelow",
+                                         "filters":  {
+                                                         "conditions":  [
+                                                                            {
+                                                                                "keyValue":  "={{ $(\u0027Webhook\u0027).item.json.task_id }}",
+                                                                                "condition":  "equals",
+                                                                                "keyName":  "id"
+                                                                            }
+                                                                        ]
+                                                     }
+                                     },
+                      "typeVersion":  1
+                  },
+                  {
+                      "id":  "res-comp",
+                      "name":  "Respond",
+                      "type":  "n8n-nodes-base.respondToWebhook",
+                      "position":  [
+                                       1560,
+                                       200
+                                   ],
+                      "parameters":  {
+                                         "respondWith":  "json",
+                                         "responseBody":  "={\"success\": true, \"message\": \"Done\"}"
+                                     },
+                      "typeVersion":  1
+                  },
+                  {
+                      "id":  "err-comp",
+                      "name":  "Error",
+                      "type":  "n8n-nodes-base.respondToWebhook",
+                      "position":  [
+                                       900,
+                                       420
+                                   ],
+                      "parameters":  {
+                                         "responseBody":  "={\"success\": false, \"message\": \"Business not found\"}",
+                                         "respondWith":  "json",
+                                         "responseCode":  404
+                                     },
+                      "typeVersion":  1
+                  }
+              ]
+}
