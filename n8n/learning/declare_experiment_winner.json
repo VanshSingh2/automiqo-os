@@ -1,0 +1,69 @@
+{
+  "name": "Declare Experiment Winner",
+  "nodes": [
+    {
+      "id": "webhook_trigger",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "parameters": {
+        "path": "declare_experiment_winner",
+        "httpMethod": "POST"
+      },
+      "position": [
+        250,
+        300
+      ]
+    },
+    {
+      "id": "validate",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "parameters": {
+        "jsCode": "// Analyze A/B results and declare winning variant\nconst { business_id, task_id, parameters } = $input.first().json;\nif (!business_id) throw new Error('Missing business_id');\nreturn [{ json: { business_id, task_id, parameters, validated: true } }];"
+      },
+      "position": [
+        450,
+        300
+      ]
+    },
+    {
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'ok', workflow: 'declare_experiment_winner' } }}"
+      },
+      "position": [
+        650,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}
