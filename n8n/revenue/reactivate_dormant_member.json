@@ -2,23 +2,66 @@
   "name": "reactivate_dormant_member",
   "nodes": [
     {
-      "parameters": {"httpMethod": "POST", "path": "reactivate_dormant_member", "responseMode": "responseNode"},
-      "id": "wh-reactivate", "name": "Webhook", "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2, "position": [240, 300]
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "reactivate_dormant_member",
+        "responseMode": "responseNode"
+      },
+      "id": "wh-reactivate",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ]
     },
     {
       "parameters": {
-        "operation": "select", "tableId": "businesses",
-        "filters": {"conditions": [{"keyName": "id", "condition": "equals", "keyValue": "={{ $json.business_id }}"}]}
+        "operation": "select",
+        "tableId": "businesses",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "equals",
+              "keyValue": "={{ $json.business_id }}"
+            }
+          ]
+        }
       },
-      "id": "val-reactivate", "name": "Validate Business", "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1, "position": [460, 300],
-      "credentials": {"supabaseApi": {"name": "Supabase_Main"}}
+      "id": "val-reactivate",
+      "name": "Validate Business",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "name": "Supabase_Main"
+        }
+      }
     },
     {
-      "parameters": {"conditions": {"options": {"leftValue": "={{ $json.length }}", "operation": "largerEqual", "rightValue": 1}}},
-      "id": "chk-reactivate", "name": "Business Exists?", "type": "n8n-nodes-base.if",
-      "typeVersion": 2, "position": [680, 300]
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "={{ $json.length }}",
+            "operation": "largerEqual",
+            "rightValue": 1
+          }
+        }
+      },
+      "id": "chk-reactivate",
+      "name": "Business Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
     },
     {
       "parameters": {
@@ -26,44 +69,161 @@
         "from": "={{ $env.TWILIO_PHONE_NUMBER }}",
         "message": "Hi {{ $('Webhook').item.json.parameters.customer_name }}! We miss you at {{ $('Webhook').item.json.parameters.business_name }}. Book now: {{ $('Webhook').item.json.parameters.booking_url }}"
       },
-      "id": "sms-reactivate", "name": "Send Reactivation SMS", "type": "n8n-nodes-base.twilio",
-      "typeVersion": 1, "position": [900, 200],
-      "credentials": {"twilioApi": {"name": "Twilio_Production"}}
+      "id": "sms-reactivate",
+      "name": "Send Reactivation SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        900,
+        200
+      ],
+      "credentials": {
+        "twilioApi": {
+          "name": "Twilio_Production"
+        }
+      }
     },
     {
       "parameters": {
-        "operation": "update", "tableId": "tasks",
-        "filters": {"conditions": [{"keyName": "id", "condition": "equals", "keyValue": "={{ $('Webhook').item.json.task_id }}"}]},
+        "operation": "update",
+        "tableId": "tasks",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "equals",
+              "keyValue": "={{ $('Webhook').item.json.task_id }}"
+            },
+            {
+              "keyName": "business_id",
+              "keyValue": "={{ $('Extract Params').item.json.business_id }}",
+              "condition": "eq"
+            }
+          ]
+        },
         "dataToSend": "defineBelow",
-        "fieldsUi": {"fieldValues": [
-          {"fieldId": "status", "fieldValue": "completed"},
-          {"fieldId": "completed_at", "fieldValue": "={{ new Date().toISOString() }}"}
-        ]}
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "completed"
+            },
+            {
+              "fieldId": "completed_at",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            }
+          ]
+        }
       },
-      "id": "upd-task-reactivate", "name": "Mark Complete", "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1, "position": [1120, 200],
-      "credentials": {"supabaseApi": {"name": "Supabase_Main"}}
+      "id": "upd-task-reactivate",
+      "name": "Mark Complete",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        200
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "name": "Supabase_Main"
+        }
+      }
     },
     {
-      "parameters": {"respondWith": "json", "responseBody": "={\"success\": true, \"message\": \"Reactivation SMS sent\"}"},
-      "id": "res-reactivate", "name": "Respond OK", "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1, "position": [1340, 200]
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"message\": \"Reactivation SMS sent\"}"
+      },
+      "id": "res-reactivate",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        200
+      ]
     },
     {
-      "parameters": {"respondWith": "json", "responseBody": "={\"success\": false, \"message\": \"Business not found\"}", "responseCode": 404},
-      "id": "err-reactivate", "name": "Error", "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1, "position": [900, 420]
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": false, \"message\": \"Business not found\"}",
+        "responseCode": 404
+      },
+      "id": "err-reactivate",
+      "name": "Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        900,
+        420
+      ]
     }
   ],
   "connections": {
-    "Webhook": {"main": [[{"node": "Validate Business", "type": "main", "index": 0}]]},
-    "Validate Business": {"main": [[{"node": "Business Exists?", "type": "main", "index": 0}]]},
-    "Business Exists?": {"main": [
-      [{"node": "Send Reactivation SMS", "type": "main", "index": 0}],
-      [{"node": "Error", "type": "main", "index": 0}]
-    ]},
-    "Send Reactivation SMS": {"main": [[{"node": "Mark Complete", "type": "main", "index": 0}]]},
-    "Mark Complete": {"main": [[{"node": "Respond OK", "type": "main", "index": 0}]]}
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Business",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Business": {
+      "main": [
+        [
+          {
+            "node": "Business Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Business Exists?": {
+      "main": [
+        [
+          {
+            "node": "Send Reactivation SMS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Reactivation SMS": {
+      "main": [
+        [
+          {
+            "node": "Mark Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Complete": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": {"executionOrder": "v1"}
+  "settings": {
+    "executionOrder": "v1"
+  }
 }

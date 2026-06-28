@@ -4,22 +4,22 @@
   },
   "name": "morning_cron_trigger",
   "connections": {
-    "Monitor": {
+    "Cron": {
       "main": [
         [
           {
-            "node": "Respond",
+            "node": "Trigger Morning Briefing All Businesses",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Cron": {
+    "Trigger Morning Briefing All Businesses": {
       "main": [
         [
           {
-            "node": "Monitor",
+            "node": "Respond",
             "type": "main",
             "index": 0
           }
@@ -43,19 +43,26 @@
     },
     {
       "parameters": {
-        "method": "GET",
-        "url": "http://backend:8000/check",
-        "genericAuthType": "httpHeaderAuth",
-        "authentication": "generic"
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/cron/morning-briefing",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-cron-secret",
+              "value": "={{ $env.CRON_SECRET }}"
+            }
+          ]
+        }
       },
-      "id": "mon-cron",
+      "id": "briefing-all-biz",
       "type": "n8n-nodes-base.httpRequest",
-      "name": "Monitor",
+      "name": "Trigger Morning Briefing All Businesses",
       "position": [
-        900,
-        200
+        460,
+        300
       ],
-      "typeVersion": 1
+      "typeVersion": 4
     },
     {
       "id": "res-cron",

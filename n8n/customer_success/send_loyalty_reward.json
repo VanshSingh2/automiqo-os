@@ -134,7 +134,7 @@
       "parameters": {
         "from": "={{ $env.TWILIO_PHONE_NUMBER }}",
         "to": "={{ $json.parameters.customer_phone }}",
-        "message": "Message from Automiqo"
+        "message": "Hi {{ $('Get Customer').item.json.name || 'there' }}, congrats on your loyalty! Here's your reward: {{ $json.reward_details || 'special offer' }}. Book: {{ $json.booking_url || '' }}"
       },
       "id": "sms-loyal",
       "type": "n8n-nodes-base.twilio",
@@ -185,6 +185,11 @@
               "keyValue": "={{ $('Webhook').item.json.task_id }}",
               "condition": "equals",
               "keyName": "id"
+            },
+            {
+              "keyName": "business_id",
+              "keyValue": "={{ $('Extract Params').item.json.business_id }}",
+              "condition": "eq"
             }
           ]
         }

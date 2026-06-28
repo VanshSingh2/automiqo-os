@@ -133,7 +133,7 @@
     {
       "parameters": {
         "operation": "insert",
-        "tableId": "platform_tasks"
+        "tableId": "tasks"
       },
       "id": "plat-rollback",
       "type": "n8n-nodes-base.supabase",
@@ -184,6 +184,11 @@
               "keyValue": "={{ $('Webhook').item.json.task_id }}",
               "condition": "equals",
               "keyName": "id"
+            },
+            {
+              "keyName": "business_id",
+              "keyValue": "={{ $('Extract Params').item.json.business_id }}",
+              "condition": "eq"
             }
           ]
         }

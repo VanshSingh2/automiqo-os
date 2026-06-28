@@ -2,36 +2,103 @@
   "name": "cancel_appointment",
   "nodes": [
     {
-      "parameters": {"httpMethod": "POST", "path": "cancel_appointment", "responseMode": "responseNode"},
-      "id": "wh-cancel", "name": "Webhook", "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2, "position": [240, 300]
-    },
-    {
       "parameters": {
-        "operation": "select", "tableId": "businesses",
-        "filters": {"conditions": [{"keyName": "id", "condition": "equals", "keyValue": "={{ $json.business_id }}"}]}
+        "httpMethod": "POST",
+        "path": "cancel_appointment",
+        "responseMode": "responseNode"
       },
-      "id": "val-cancel", "name": "Validate Business", "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1, "position": [460, 300],
-      "credentials": {"supabaseApi": {"name": "Supabase_Main"}}
-    },
-    {
-      "parameters": {"conditions": {"options": {"leftValue": "={{ $json.length }}", "operation": "largerEqual", "rightValue": 1}}},
-      "id": "chk-cancel", "name": "Business Exists?", "type": "n8n-nodes-base.if",
-      "typeVersion": 2, "position": [680, 300]
+      "id": "wh-cancel",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ]
     },
     {
       "parameters": {
-        "operation": "update", "tableId": "appointments",
-        "filters": {"conditions": [{"keyName": "id", "condition": "equals", "keyValue": "={{ $('Webhook').item.json.parameters.appointment_id }}"}]},
+        "operation": "select",
+        "tableId": "businesses",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "equals",
+              "keyValue": "={{ $json.business_id }}"
+            }
+          ]
+        }
+      },
+      "id": "val-cancel",
+      "name": "Validate Business",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "name": "Supabase_Main"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "={{ $json.length }}",
+            "operation": "largerEqual",
+            "rightValue": 1
+          }
+        }
+      },
+      "id": "chk-cancel",
+      "name": "Business Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "appointments",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "equals",
+              "keyValue": "={{ $('Webhook').item.json.parameters.appointment_id }}"
+            }
+          ]
+        },
         "dataToSend": "defineBelow",
-        "fieldsUi": {"fieldValues": [
-          {"fieldId": "status", "fieldValue": "cancelled"}
-        ]}
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "cancelled"
+            }
+          ]
+        }
       },
-      "id": "upd-cancel", "name": "Cancel Appointment", "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1, "position": [900, 200],
-      "credentials": {"supabaseApi": {"name": "Supabase_Main"}}
+      "id": "upd-cancel",
+      "name": "Cancel Appointment",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        900,
+        200
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "name": "Supabase_Main"
+        }
+      }
     },
     {
       "parameters": {
@@ -39,45 +106,200 @@
         "from": "={{ $env.TWILIO_PHONE_NUMBER }}",
         "message": "Your appointment has been cancelled. Book a new one: {{ $('Webhook').item.json.parameters.booking_url }}"
       },
-      "id": "sms-cancel", "name": "Cancellation SMS", "type": "n8n-nodes-base.twilio",
-      "typeVersion": 1, "position": [1120, 200],
-      "credentials": {"twilioApi": {"name": "Twilio_Production"}}
+      "id": "sms-cancel",
+      "name": "Cancellation SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        200
+      ],
+      "credentials": {
+        "twilioApi": {
+          "name": "Twilio_Production"
+        }
+      }
     },
     {
       "parameters": {
-        "operation": "update", "tableId": "tasks",
-        "filters": {"conditions": [{"keyName": "id", "condition": "equals", "keyValue": "={{ $('Webhook').item.json.task_id }}"}]},
+        "operation": "update",
+        "tableId": "tasks",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "equals",
+              "keyValue": "={{ $('Webhook').item.json.task_id }}"
+            },
+            {
+              "keyName": "business_id",
+              "keyValue": "={{ $('Extract Params').item.json.business_id }}",
+              "condition": "eq"
+            }
+          ]
+        },
         "dataToSend": "defineBelow",
-        "fieldsUi": {"fieldValues": [
-          {"fieldId": "status", "fieldValue": "completed"},
-          {"fieldId": "completed_at", "fieldValue": "={{ new Date().toISOString() }}"}
-        ]}
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "completed"
+            },
+            {
+              "fieldId": "completed_at",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            }
+          ]
+        }
       },
-      "id": "upd-task-cancel", "name": "Mark Complete", "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1, "position": [1340, 200],
-      "credentials": {"supabaseApi": {"name": "Supabase_Main"}}
+      "id": "upd-task-cancel",
+      "name": "Mark Complete",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        220
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "name": "Supabase_Main"
+        }
+      }
     },
     {
-      "parameters": {"respondWith": "json", "responseBody": "={\"success\": true, \"message\": \"Appointment cancelled\"}"},
-      "id": "res-cancel", "name": "Respond OK", "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1, "position": [1560, 200]
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"message\": \"Appointment cancelled\"}"
+      },
+      "id": "res-cancel",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        220
+      ]
     },
     {
-      "parameters": {"respondWith": "json", "responseBody": "={\"success\": false, \"message\": \"Business not found\"}", "responseCode": 404},
-      "id": "err-cancel", "name": "Error", "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1, "position": [900, 420]
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": false, \"message\": \"Business not found\"}",
+        "responseCode": 404
+      },
+      "id": "err-cancel",
+      "name": "Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        900,
+        420
+      ]
+    },
+    {
+      "id": "trigger-waitlist-001",
+      "name": "Trigger Fill Waitlist",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1340,
+        220
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.N8N_WEBHOOK_BASE_URL }}/fill_waitlist_slot",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ business_id: $('Webhook').first().json.business_id, task_id: $('Webhook').first().json.task_id, parameters: { appointment_id: $('Webhook').first().json.parameters.appointment_id } }) }}"
+      }
     }
   ],
   "connections": {
-    "Webhook": {"main": [[{"node": "Validate Business", "type": "main", "index": 0}]]},
-    "Validate Business": {"main": [[{"node": "Business Exists?", "type": "main", "index": 0}]]},
-    "Business Exists?": {"main": [
-      [{"node": "Cancel Appointment", "type": "main", "index": 0}],
-      [{"node": "Error", "type": "main", "index": 0}]
-    ]},
-    "Cancel Appointment": {"main": [[{"node": "Cancellation SMS", "type": "main", "index": 0}]]},
-    "Cancellation SMS": {"main": [[{"node": "Mark Complete", "type": "main", "index": 0}]]},
-    "Mark Complete": {"main": [[{"node": "Respond OK", "type": "main", "index": 0}]]}
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Business",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Business": {
+      "main": [
+        [
+          {
+            "node": "Business Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Business Exists?": {
+      "main": [
+        [
+          {
+            "node": "Cancel Appointment",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cancel Appointment": {
+      "main": [
+        [
+          {
+            "node": "Cancellation SMS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cancellation SMS": {
+      "main": [
+        [
+          {
+            "node": "Mark Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Complete": {
+      "main": [
+        [
+          {
+            "node": "Trigger Fill Waitlist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Fill Waitlist": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": {"executionOrder": "v1"}
+  "settings": {
+    "executionOrder": "v1"
+  }
 }

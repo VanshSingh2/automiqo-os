@@ -134,7 +134,7 @@
       "parameters": {
         "from": "={{ $env.TWILIO_PHONE_NUMBER }}",
         "to": "={{ $json.parameters.customer_phone }}",
-        "message": "Message from Automiqo"
+        "message": "Hi {{ $('Get Customer').item.json.name || 'there' }}, you have an outstanding balance. Pay securely here: {{ $json.payment_url || 'contact us' }}. Reply STOP to opt out."
       },
       "id": "sms-paylnk",
       "type": "n8n-nodes-base.twilio",
@@ -185,6 +185,11 @@
               "keyValue": "={{ $('Webhook').item.json.task_id }}",
               "condition": "equals",
               "keyName": "id"
+            },
+            {
+              "keyName": "business_id",
+              "keyValue": "={{ $('Extract Params').item.json.business_id }}",
+              "condition": "eq"
             }
           ]
         }

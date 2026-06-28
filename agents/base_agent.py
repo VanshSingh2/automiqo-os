@@ -69,6 +69,44 @@ class BaseAgent(ABC):
         except Exception:
             return AgentResponse(status="ok", summary=content.strip())
 
+    async def search_knowledge(self, query: str, category: str = None, limit: int = 5) -> list:
+        """Search business knowledge base (FAQs, policies, SOPs) by semantic meaning."""
+        try:
+            from backend.memory.semantic import semantic_search
+            return await semantic_search(self.business_id, query, category, limit)
+        except Exception:
+            return []
+
+    async def remember(self, content: str, source: str = "agent_action") -> None:
+        """Store a fact in reflections table for learning loop."""
+        try:
+            from backend.memory.supabase_client import get_supabase
+            get_supabase().table("reflections").insert({
+                "business_id": str(self.business_id),
+                "what_happened": content,
+                "lesson": "",
+                "source": source,
+                "mistake": False,
+            }).execute()
+        except Exception:
+            pass
+
+    async def recall_facts(self, query: str, limit: int = 5) -> list:
+        """Recall relevant past reflections/facts (lightweight Graphiti substitute)."""
+        try:
+            from backend.memory.supabase_client import get_supabase
+            result = get_supabase().table("reflections") \
+                .select("what_happened,lesson,created_at") \
+                .eq("business_id", str(self.business_id)) \
+                .order("created_at", desc=True).limit(limit * 3).execute()
+            rows = result.data or []
+            query_lower = query.lower()
+            scored = [(r, sum(1 for w in query_lower.split() if w in (r.get("what_happened") or "").lower())) for r in rows]
+            scored.sort(key=lambda x: x[1], reverse=True)
+            return [r for r, _ in scored[:limit]]
+        except Exception:
+            return []
+
     def _inject_biz(self, prompt: str) -> str:
         """Replace {business_name}, {industry}, {timezone} with real values from Supabase."""
         from backend.memory.supabase_client import get_supabase

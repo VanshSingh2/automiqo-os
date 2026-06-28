@@ -133,7 +133,7 @@
     {
       "parameters": {
         "operation": "insert",
-        "tableId": "invoices"
+        "tableId": "purchase_orders"
       },
       "id": "fin-refund",
       "type": "n8n-nodes-base.supabase",
@@ -184,6 +184,11 @@
               "keyValue": "={{ $('Webhook').item.json.task_id }}",
               "condition": "equals",
               "keyName": "id"
+            },
+            {
+              "keyName": "business_id",
+              "keyValue": "={{ $('Extract Params').item.json.business_id }}",
+              "condition": "eq"
             }
           ]
         }

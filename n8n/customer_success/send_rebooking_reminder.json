@@ -134,7 +134,7 @@
       "parameters": {
         "from": "={{ $env.TWILIO_PHONE_NUMBER }}",
         "to": "={{ $json.parameters.customer_phone }}",
-        "message": "Message from Automiqo"
+        "message": "Hi {{ $('Get Customer').item.json.name || 'there' }}, we miss you! Time for your next visit? Book here: {{ $json.booking_url || '' }}. Reply STOP to opt out."
       },
       "id": "sms-rebk",
       "type": "n8n-nodes-base.twilio",
@@ -185,6 +185,11 @@
               "keyValue": "={{ $('Webhook').item.json.task_id }}",
               "condition": "equals",
               "keyName": "id"
+            },
+            {
+              "keyName": "business_id",
+              "keyValue": "={{ $('Extract Params').item.json.business_id }}",
+              "condition": "eq"
             }
           ]
         }

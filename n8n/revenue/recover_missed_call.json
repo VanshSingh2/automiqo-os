@@ -2,23 +2,66 @@
   "name": "recover_missed_call",
   "nodes": [
     {
-      "parameters": {"httpMethod": "POST", "path": "recover_missed_call", "responseMode": "responseNode"},
-      "id": "webhook-1", "name": "Webhook", "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2, "position": [240, 300]
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "recover_missed_call",
+        "responseMode": "responseNode"
+      },
+      "id": "webhook-1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        300
+      ]
     },
     {
       "parameters": {
-        "operation": "select", "tableId": "businesses",
-        "filters": {"conditions": [{"keyName": "id", "condition": "equals", "keyValue": "={{ $json.business_id }}"}]}
+        "operation": "select",
+        "tableId": "businesses",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "equals",
+              "keyValue": "={{ $json.business_id }}"
+            }
+          ]
+        }
       },
-      "id": "validate-1", "name": "Validate Business", "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1, "position": [460, 300],
-      "credentials": {"supabaseApi": {"name": "Supabase_Main"}}
+      "id": "validate-1",
+      "name": "Validate Business",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "name": "Supabase_Main"
+        }
+      }
     },
     {
-      "parameters": {"conditions": {"options": {"leftValue": "={{ $json.length }}", "operation": "largerEqual", "rightValue": 1}}},
-      "id": "check-1", "name": "Business Exists?", "type": "n8n-nodes-base.if",
-      "typeVersion": 2, "position": [680, 300]
+      "parameters": {
+        "conditions": {
+          "options": {
+            "leftValue": "={{ $json.length }}",
+            "operation": "largerEqual",
+            "rightValue": 1
+          }
+        }
+      },
+      "id": "check-1",
+      "name": "Business Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        680,
+        300
+      ]
     },
     {
       "parameters": {
@@ -26,44 +69,161 @@
         "from": "={{ $env.TWILIO_PHONE_NUMBER }}",
         "message": "Hi! We missed your call. Book online: {{ $('Webhook').item.json.parameters.booking_url }}"
       },
-      "id": "sms-1", "name": "Send Recovery SMS", "type": "n8n-nodes-base.twilio",
-      "typeVersion": 1, "position": [900, 200],
-      "credentials": {"twilioApi": {"name": "Twilio_Production"}}
+      "id": "sms-1",
+      "name": "Send Recovery SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        900,
+        200
+      ],
+      "credentials": {
+        "twilioApi": {
+          "name": "Twilio_Production"
+        }
+      }
     },
     {
       "parameters": {
-        "operation": "update", "tableId": "tasks",
-        "filters": {"conditions": [{"keyName": "id", "condition": "equals", "keyValue": "={{ $('Webhook').item.json.task_id }}"}]},
+        "operation": "update",
+        "tableId": "tasks",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "equals",
+              "keyValue": "={{ $('Webhook').item.json.task_id }}"
+            },
+            {
+              "keyName": "business_id",
+              "keyValue": "={{ $('Extract Params').item.json.business_id }}",
+              "condition": "eq"
+            }
+          ]
+        },
         "dataToSend": "defineBelow",
-        "fieldsUi": {"fieldValues": [
-          {"fieldId": "status", "fieldValue": "completed"},
-          {"fieldId": "completed_at", "fieldValue": "={{ new Date().toISOString() }}"}
-        ]}
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "completed"
+            },
+            {
+              "fieldId": "completed_at",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            }
+          ]
+        }
       },
-      "id": "update-1", "name": "Mark Complete", "type": "n8n-nodes-base.supabase",
-      "typeVersion": 1, "position": [1120, 200],
-      "credentials": {"supabaseApi": {"name": "Supabase_Main"}}
+      "id": "update-1",
+      "name": "Mark Complete",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        200
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "name": "Supabase_Main"
+        }
+      }
     },
     {
-      "parameters": {"respondWith": "json", "responseBody": "={\"success\": true, \"message\": \"Recovery SMS sent\"}"},
-      "id": "respond-1", "name": "Respond OK", "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1, "position": [1340, 200]
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": true, \"message\": \"Recovery SMS sent\"}"
+      },
+      "id": "respond-1",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        200
+      ]
     },
     {
-      "parameters": {"respondWith": "json", "responseBody": "={\"success\": false, \"message\": \"Business not found\"}", "responseCode": 404},
-      "id": "error-1", "name": "Error", "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1, "position": [900, 420]
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\"success\": false, \"message\": \"Business not found\"}",
+        "responseCode": 404
+      },
+      "id": "error-1",
+      "name": "Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        900,
+        420
+      ]
     }
   ],
   "connections": {
-    "Webhook": {"main": [[{"node": "Validate Business", "type": "main", "index": 0}]]},
-    "Validate Business": {"main": [[{"node": "Business Exists?", "type": "main", "index": 0}]]},
-    "Business Exists?": {"main": [
-      [{"node": "Send Recovery SMS", "type": "main", "index": 0}],
-      [{"node": "Error", "type": "main", "index": 0}]
-    ]},
-    "Send Recovery SMS": {"main": [[{"node": "Mark Complete", "type": "main", "index": 0}]]},
-    "Mark Complete": {"main": [[{"node": "Respond OK", "type": "main", "index": 0}]]}
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Business",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Business": {
+      "main": [
+        [
+          {
+            "node": "Business Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Business Exists?": {
+      "main": [
+        [
+          {
+            "node": "Send Recovery SMS",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Recovery SMS": {
+      "main": [
+        [
+          {
+            "node": "Mark Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Complete": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": {"executionOrder": "v1"}
+  "settings": {
+    "executionOrder": "v1"
+  }
 }

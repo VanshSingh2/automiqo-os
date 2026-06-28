@@ -528,3 +528,43 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='leads' AND policyname='service_role_all') THEN
     CREATE POLICY "service_role_all" ON leads FOR ALL USING (true); END IF;
 END $$;
+
+-- ============================================
+-- PGVECTOR SEMANTIC SEARCH
+-- ============================================
+CREATE EXTENSION IF NOT EXISTS vector;
+
+ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS embedding vector(1536);
+ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual';
+ALTER TABLE knowledge ADD COLUMN IF NOT EXISTS approved BOOLEAN DEFAULT true;
+
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminder_sent BOOLEAN DEFAULT false;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminder_2h_sent BOOLEAN DEFAULT false;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS calcom_booking_id TEXT;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS calcom_booking_uid TEXT;
+
+CREATE OR REPLACE FUNCTION match_knowledge(
+  query_embedding vector(1536),
+  business_id_filter UUID,
+  similarity_threshold FLOAT DEFAULT 0.7,
+  match_count INT DEFAULT 5,
+  category_filter TEXT DEFAULT NULL
+)
+RETURNS TABLE (id UUID, title TEXT, content TEXT, category TEXT, similarity FLOAT)
+LANGUAGE plpgsql AS $$
+BEGIN
+  RETURN QUERY
+  SELECT k.id, k.title, k.content, k.category,
+    1 - (k.embedding <=> query_embedding) AS similarity
+  FROM knowledge k
+  WHERE k.business_id = business_id_filter
+    AND k.approved = true
+    AND (category_filter IS NULL OR k.category = category_filter)
+    AND 1 - (k.embedding <=> query_embedding) > similarity_threshold
+  ORDER BY k.embedding <=> query_embedding
+  LIMIT match_count;
+END;
+$$;
+
+CREATE INDEX IF NOT EXISTS knowledge_embedding_idx
+ON knowledge USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);

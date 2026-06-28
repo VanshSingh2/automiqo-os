@@ -17,3 +17,4 @@ openai>=1.51.0
 pytest>=8.3.0
 pytest-asyncio>=0.24.0
 python-dotenv>=1.0.0
+scrapegraph-py>=2.1.0
