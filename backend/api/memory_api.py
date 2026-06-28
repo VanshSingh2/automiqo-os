@@ -49,9 +49,9 @@ class EnrichRequest(BaseModel):
 
 @router.post("/leads/enrich-one")
 async def enrich_single_lead(req: EnrichRequest):
-    from backend.integrations.scrapegraph import extract_business_info
+    from backend.integrations.lead_enricher import enrich_lead
     from backend.memory.supabase_client import get_supabase
-    info = await extract_business_info(req.website_url)
+    info = await enrich_lead(req.website_url)
     if info.get("error"):
         return {"enriched": False, "error": info["error"]}
     sb = get_supabase()
@@ -61,7 +61,7 @@ async def enrich_single_lead(req: EnrichRequest):
     if info.get("has_booking_system") is not None:
         update["has_booking_system"] = info["has_booking_system"]
     if info.get("services"):
-        update["notes"] = f"Services: {', '.join(info['services'][:5])}"
+        update["notes"] = f"Services: {', '.join(info.get('services', [])[:5])}"
     if update:
         sb.table("leads").update(update).eq("id", req.lead_id).execute()
     return {"enriched": bool(update), "data": info}
@@ -69,7 +69,7 @@ async def enrich_single_lead(req: EnrichRequest):
 
 @router.post("/leads/{business_id}/enrich-batch")
 async def enrich_batch(business_id: UUID, limit: int = 20):
-    from backend.integrations.scrapegraph import enrich_leads_batch
+    from backend.integrations.lead_enricher import enrich_leads_batch
     from backend.memory.supabase_client import get_supabase
     sb = get_supabase()
     result = sb.table("leads").select("id,company_name,website,email") \
@@ -82,12 +82,42 @@ async def enrich_batch(business_id: UUID, limit: int = 20):
     updated = 0
     for lead in enriched:
         if lead.get("enriched"):
-            upd = {}
-            if lead.get("email"):
-                upd["email"] = lead["email"]
-            if lead.get("has_booking_system") is not None:
-                upd["has_booking_system"] = lead["has_booking_system"]
+            upd = {k: lead[k] for k in ("email", "has_booking_system", "booking_platform") if lead.get(k) is not None}
             if upd:
                 sb.table("leads").update(upd).eq("id", lead["id"]).execute()
                 updated += 1
     return {"processed": len(leads), "enriched": updated}
+
+
+# ── Full Pipeline ─────────────────────────────────────────────
+
+class PipelineRequest(BaseModel):
+    business_id: str
+    query: str
+    location: str
+    industry: str = "med spa"
+    count: int = 50
+    enrich: bool = True
+    min_score: int = 40
+
+
+@router.post("/leads/pipeline")
+async def run_lead_pipeline(req: PipelineRequest):
+    """Full lead gen pipeline: discover → enrich → score → store."""
+    from backend.integrations.lead_pipeline import run_pipeline
+    return await run_pipeline(
+        business_id=req.business_id,
+        query=req.query,
+        location=req.location,
+        industry=req.industry,
+        count=req.count,
+        enrich=req.enrich,
+        min_score=req.min_score,
+    )
+
+
+@router.get("/leads/{business_id}/stats")
+async def lead_stats(business_id: str):
+    """Get lead pipeline stats for a business."""
+    from backend.integrations.lead_pipeline import get_pipeline_stats
+    return await get_pipeline_stats(business_id)

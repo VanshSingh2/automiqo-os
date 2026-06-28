@@ -13,66 +13,47 @@ class LeadManager(BaseAgent):
         self.llm = self._build_dept_llm()
 
     async def run(self, question: str, context: dict | None = None) -> AgentResponse:
-        sb = get_supabase()
-        bid = str(self.business_id)
         ctx = context or {}
+        bid = str(self.business_id)
+        sb = get_supabase()
 
-        is_scrape = any(w in question.lower() for w in ["scrape", "find", "leads", "prospect"])
-        task_id = None
+        # Detect if this is a scrape/pipeline request
+        q_lower = question.lower()
+        is_pipeline = any(w in q_lower for w in ["find", "scrape", "discover", "get leads", "lead gen", "prospect"])
 
-        if is_scrape:
-            query = ctx.get("query", question)
-            location = ctx.get("location", "New Jersey")
-            count = ctx.get("count", 50)
-            industry = ctx.get("industry", "med spa")
+        pipeline_result = {}
+        if is_pipeline:
+            from backend.integrations.lead_pipeline import run_pipeline
+            pipeline_result = await run_pipeline(
+                business_id=bid,
+                query=ctx.get("query", ctx.get("industry", "med spa")),
+                location=ctx.get("location", "New Jersey"),
+                industry=ctx.get("industry", "med spa"),
+                count=int(ctx.get("count", 30)),
+                enrich=True,
+                min_score=40,
+            )
 
-            result = sb.table("tasks").insert({
-                "business_id": bid,
-                "created_by": "lead_manager",
-                "workflow": "scrape_google_maps_leads",
-                "parameters": {
-                    "query": f"{industry} {query}",
-                    "location": location,
-                    "count": count,
-                    "store_in_supabase": True,
-                },
-                "priority": "high",
-                "status": "queued",
-            }).execute()
-            task_id = result.data[0]["id"] if result.data else None
-
-            try:
-                from backend.dispatcher.queue import enqueue_task
-                await enqueue_task({
-                    "task_id": str(task_id),
-                    "business_id": bid,
-                    "workflow": "scrape_google_maps_leads",
-                    "parameters": {"query": f"{industry} {query}", "location": location, "count": count},
-                    "priority": "high",
-                })
-            except Exception:
-                pass
-
-        # Current leads stats
+        # Get current pipeline stats
         try:
-            leads = sb.table("leads").select("id,status,score,has_booking_system") \
-                .eq("business_id", bid).execute().data or []
+            from backend.integrations.lead_pipeline import get_pipeline_stats
+            stats = await get_pipeline_stats(bid)
         except Exception:
-            leads = []
+            leads = sb.table("leads").select("id,status,score,has_booking_system,email").eq("business_id", bid).execute().data or []
+            stats = {
+                "total": len(leads),
+                "new": sum(1 for l in leads if l.get("status") == "new"),
+                "high_score": sum(1 for l in leads if (l.get("score") or 0) >= 70),
+                "with_email": sum(1 for l in leads if l.get("email")),
+                "no_booking_system": sum(1 for l in leads if not l.get("has_booking_system")),
+            }
 
-        state = {
-            "total_leads": len(leads),
-            "new_leads": len([l for l in leads if l.get("status") == "new"]),
-            "high_score_leads": len([l for l in leads if (l.get("score") or 0) >= 70]),
-            "no_booking_system": len([l for l in leads if not l.get("has_booking_system")]),
-            "scrape_queued": task_id is not None,
-            "scrape_task_id": str(task_id) if task_id else None,
-        }
+        state = {**stats, **pipeline_result, **ctx}
 
         try:
             prompt = self._load_prompt("managers/cmo/lead_manager")
         except Exception:
-            prompt = "You are the Lead Manager. Manage lead acquisition, scoring, and outreach. Respond with JSON: {status, summary, metrics, recommendations}."
+            prompt = "You are the Lead Manager. Run discovery, enrichment, scoring and outreach for leads. Respond with JSON: {status, summary, metrics, recommendations}."
 
         messages = [
             SystemMessage(content=self._inject_biz(prompt)),
