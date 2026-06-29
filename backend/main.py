@@ -17,16 +17,20 @@ from backend.api.specialists import router as specialists_router
 from backend.api.memory_api import router as memory_router
 from backend.api.leads_api import router as leads_router
 from backend.api.qa_api import router as qa_router
+from backend.api.webhooks import router as webhooks_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from backend.dispatcher.queue import worker_loop
-    worker_task = asyncio.create_task(worker_loop())
-    print("✅ Redis worker started")
+    from backend.events.worker import event_worker_loop
+    task_worker = asyncio.create_task(worker_loop())
+    event_worker = asyncio.create_task(event_worker_loop())
+    print("✅ Task worker + Event worker started")
     yield
-    worker_task.cancel()
-    print("Redis worker stopped")
+    task_worker.cancel()
+    event_worker.cancel()
+    print("Workers stopped")
 
 
 app = FastAPI(title="Automiqo OS", version="1.0.0", lifespan=lifespan)
@@ -54,6 +58,7 @@ app.include_router(specialists_router)
 app.include_router(memory_router)
 app.include_router(leads_router)
 app.include_router(qa_router)
+app.include_router(webhooks_router)
 
 
 def _check_cron_secret(x_cron_secret: str = Header(None)):

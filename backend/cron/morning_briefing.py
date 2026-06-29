@@ -1,27 +1,28 @@
-"""7am daily: fires morning briefing for all active businesses."""
+"""7am daily: CEO standup — fires daily.standup event for all active businesses."""
 import os
 import asyncio
 from backend.memory.supabase_client import get_supabase
-from agents.executive.ceo.agent import CEOAgent
 from uuid import UUID
 
 
 async def run_morning_briefing():
     sb = get_supabase()
-    businesses = sb.table("businesses").select("id, name, timezone").eq("active", True).execute().data or []
+    businesses = sb.table("businesses").select("id,name,timezone").eq("active", True).execute().data or []
+
     for biz in businesses:
         try:
-            bid = UUID(biz["id"])
-            agent = CEOAgent(business_id=bid)
-            response = await agent.run(
-                "Generate the morning briefing for the owner. Include: revenue yesterday, appointments today, any alerts, top 3 recommendations."
-            )
-            sb.table("reports").insert({
-                "business_id": str(bid),
-                "report_type": "daily",
-                "content": {"metrics": response.metrics, "recommendations": response.recommendations},
-                "summary": response.summary,
-            }).execute()
+            bid = str(biz["id"])
+            # Fire daily standup event — CEO agent handles autonomously
+            from backend.events.bus import publish, E
+            await publish(bid, E.DAILY_STANDUP, {
+                "business_name": biz.get("name", ""),
+                "timezone": biz.get("timezone", "America/New_York"),
+            }, source="morning_cron")
+
+            # Also run hourly heartbeat checks
+            from backend.events.worker import run_hourly_heartbeat
+            await run_hourly_heartbeat(bid)
+
         except Exception as e:
             print(f"Morning briefing failed for {biz['id']}: {e}")
 

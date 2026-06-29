@@ -568,3 +568,25 @@ $$;
 
 CREATE INDEX IF NOT EXISTS knowledge_embedding_idx
 ON knowledge USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+-- ============================================
+-- CONVERSATIONS TABLE (SMS/Lead conversation state)
+-- ============================================
+CREATE TABLE IF NOT EXISTS conversations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  contact_phone TEXT,
+  lead_id UUID REFERENCES leads(id),
+  customer_id UUID REFERENCES customers(id),
+  state TEXT DEFAULT 'new',
+  messages JSONB DEFAULT '[]',
+  message_count INTEGER DEFAULT 0,
+  last_message_at TIMESTAMPTZ,
+  last_inbound TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='conversations' AND policyname='service_role_all') THEN
+    CREATE POLICY "service_role_all" ON conversations FOR ALL USING (true); END IF;
+END $$;

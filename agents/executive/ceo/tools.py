@@ -200,10 +200,33 @@ def make_ceo_tools(business_id: UUID):
         )
         return {"summary": resp.summary, "metrics": resp.metrics}
 
+    @tool
+    async def notify_department(department: str, message: str, trigger_action: str = "") -> dict:
+        """
+        Send a message to another dept agent and optionally trigger an action.
+        Use when one dept discovers something another dept should act on.
+        department: coo|cro|cmo|cfo|cto|customer_success|learning
+        trigger_action: optional workflow to fire e.g. 'send_reminder_24h'
+        """
+        from backend.events.bus import publish
+        event_map = {
+            "coo": "internal.coo_alert", "cro": "internal.cro_alert",
+            "cmo": "internal.cmo_alert", "cfo": "internal.cfo_alert",
+            "cto": "internal.cto_alert", "customer_success": "internal.csd_alert",
+            "learning": "internal.learning_alert",
+        }
+        await publish(str(business_id), event_map.get(department, "internal.alert"), {
+            "message": message,
+            "trigger_action": trigger_action,
+            "from": "ceo",
+        }, source="ceo_notify")
+        return {"notified": department, "message": message}
+
     return [
         get_business_state, ask_coo, ask_cro, ask_customer_success,
         create_recommendation, ask_cmo, ask_cfo, ask_cto,
         ask_chief_of_staff, ask_learning_director,
         create_action_plan, assign_task_to_manager,
         check_task_status, dispatch_workflow_directly, scrape_leads,
+        notify_department,
     ]
