@@ -54,9 +54,23 @@ class LeadManager(BaseAgent):
 
         # Detect lead generation intent
         is_lead_gen = any(w in q_lower for w in LEAD_GEN_KEYWORDS)
+        is_social_lead_gen = any(w in q_lower for w in [
+            "twitter", "reddit", "instagram", "social media", "social leads",
+            "find on social", "social scraping", "agent reach", "agent-reach",
+        ])
         pipeline_result = {}
 
-        if is_lead_gen:
+        if is_social_lead_gen:
+            from backend.integrations.social_lead_pipeline import run_social_lead_pipeline
+            industry = ctx.get("industry") or self._detect_industry(question)
+            platforms = ctx.get("platforms")
+            pipeline_result = await run_social_lead_pipeline(
+                business_id=self.business_id,
+                industry=industry,
+                platforms=platforms,
+                limit_per_platform=int(ctx.get("limit_per_platform", 30)),
+            )
+        elif is_lead_gen:
             industry = ctx.get("industry") or self._detect_industry(question)
             locations = ctx.get("locations")
             limit = int(ctx.get("limit_per_location", ctx.get("count", 20)))

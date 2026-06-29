@@ -20,3 +20,4 @@ python-dotenv>=1.0.0
 scrapling[fetchers]>=0.3.2
 crawl4ai>=0.4.0
 psutil>=6.0.0
+pyyaml>=6.0

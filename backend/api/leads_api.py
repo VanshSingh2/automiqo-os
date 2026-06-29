@@ -29,6 +29,43 @@ async def run_pipeline(req: PipelineRunRequest):
     )
 
 
+class SocialPipelineRequest(BaseModel):
+    business_id: str
+    industry: str = "medspa"
+    platforms: list[str] = []    # ["twitter","reddit","instagram"] or [] for all available
+    limit_per_platform: int = 30
+
+
+@router.post("/pipeline/social")
+async def run_social_pipeline(req: SocialPipelineRequest):
+    """
+    Run Agent-Reach social scraping pipeline.
+    Finds leads from Twitter, Reddit, and Instagram.
+    Requires agent-reach CLI tools installed on the server.
+    Install: agent-reach install --channels=twitter,reddit
+    """
+    from backend.integrations.social_lead_pipeline import run_social_lead_pipeline
+    return await run_social_lead_pipeline(
+        business_id=UUID(req.business_id),
+        industry=req.industry,
+        platforms=req.platforms if req.platforms else None,
+        limit_per_platform=req.limit_per_platform,
+    )
+
+
+@router.get("/pipeline/social/health")
+async def social_pipeline_health():
+    """Check which Agent-Reach tools are installed and available."""
+    from backend.integrations.agent_reach_scraper import check_agent_reach_tools
+    tools = check_agent_reach_tools()
+    return {
+        "tools": tools,
+        "status": "ready" if tools["any_available"] else "not_installed",
+        "install_command": "agent-reach install --channels=twitter,reddit",
+        "docs": "https://github.com/Panniantong/Agent-Reach",
+    }
+
+
 @router.post("/pipeline/discover-only")
 async def discover_only(req: PipelineRunRequest):
     """Fast discovery only — no enrichment. Returns raw counts."""
