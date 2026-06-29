@@ -1,9 +1,10 @@
 """
-Event Worker — background loop that processes events from Redis queue.
-Runs alongside the task worker in main.py lifespan.
+Event Worker — background loop processing events from Redis queue.
+Runs alongside task worker in main.py lifespan.
 """
 import json
 import asyncio
+from datetime import datetime, timezone, timedelta
 from backend.events.router import get_handlers
 from backend.events.handlers import (
     handle_coo, handle_cro, handle_cmo,
@@ -19,6 +20,54 @@ DEPT_HANDLERS = {
     "learning": handle_learning,
     "ceo": handle_ceo,
 }
+
+
+async def _handle_internal_alert(business_id: str, event_type: str, payload: dict) -> None:
+    """Route internal dept-to-dept alerts to the right handler."""
+    dept_map = {
+        "internal.coo_alert": "coo",
+        "internal.cro_alert": "cro",
+        "internal.cmo_alert": "cmo",
+        "internal.cfo_alert": "cfo",
+        "internal.cto_alert": "cto",
+        "internal.csd_alert": "csd",
+        "internal.learning_alert": "learning",
+        "internal.alert": "ceo",
+    }
+    dept = dept_map.get(event_type)
+    if dept and dept in DEPT_HANDLERS:
+        # Wrap as a synthetic event the handler understands
+        await DEPT_HANDLERS[dept](business_id, event_type, {
+            **payload,
+            "_internal": True,
+            "_from": payload.get("from", "system"),
+        })
+
+
+async def _handle_dept_work_trigger(business_id: str, event_type: str, payload: dict) -> None:
+    """Fire the autonomous daily work loop for the triggered department."""
+    dept = event_type.replace("dept.work.", "")
+    loop_map = {
+        "coo": "backend.autonomous.coo_loop.run_coo_daily_loop",
+        "cmo": "backend.autonomous.cmo_loop.run_cmo_daily_loop",
+        "cro": "backend.autonomous.cro_loop.run_cro_daily_loop",
+        "cfo": "backend.autonomous.cfo_loop.run_cfo_daily_loop",
+        "cto": "backend.autonomous.cto_loop.run_cto_daily_loop",
+        "csd": "backend.autonomous.csd_loop.run_csd_daily_loop",
+        "learning": "backend.autonomous.learning_loop.run_learning_daily_loop",
+    }
+    fn_path = loop_map.get(dept)
+    if not fn_path:
+        return
+    module_path, fn_name = fn_path.rsplit(".", 1)
+    try:
+        import importlib
+        module = importlib.import_module(module_path)
+        fn = getattr(module, fn_name)
+        result = await fn(business_id)
+        print(f"[{dept.upper()} loop] {result.get('actions_taken',0)} actions, {result.get('approvals_queued',0)} queued")
+    except Exception as e:
+        print(f"[{dept.upper()} loop] Error: {e}")
 
 
 async def event_worker_loop():
@@ -41,26 +90,35 @@ async def event_worker_loop():
             payload = event.get("payload", {})
             event_id = event.get("event_id", "")
 
+            # Internal dept-to-dept alerts
+            if event_type.startswith("internal."):
+                await _handle_internal_alert(business_id, event_type, payload)
+                continue
+
+            # Autonomous dept work triggers (from scheduler)
+            if event_type.startswith("dept.work."):
+                await _handle_dept_work_trigger(business_id, event_type, payload)
+                continue
+
+            # Standard fan-out
             handlers = get_handlers(event_type)
             if not handlers:
                 continue
 
-            # Fan-out to all subscribed dept handlers in parallel
-            tasks = []
-            for dept in handlers:
-                if dept in DEPT_HANDLERS:
-                    tasks.append(DEPT_HANDLERS[dept](business_id, event_type, payload))
-
+            tasks = [
+                DEPT_HANDLERS[dept](business_id, event_type, payload)
+                for dept in handlers if dept in DEPT_HANDLERS
+            ]
             if tasks:
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                # Mark event as processed
-                try:
-                    sb = get_supabase()
-                    sb.table("events").update({
-                        "listeners_notified": handlers,
-                    }).eq("id", event_id).execute()
-                except Exception:
-                    pass
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Mark event processed
+            try:
+                get_supabase().table("events").update(
+                    {"listeners_notified": handlers}
+                ).eq("id", event_id).execute()
+            except Exception:
+                pass
 
         except Exception as e:
             print(f"[event_worker] Error: {e}")
@@ -69,17 +127,15 @@ async def event_worker_loop():
 
 async def run_hourly_heartbeat(business_id: str):
     """
-    Hourly check — each dept agent scans for pending work without waiting for events.
-    COO: any reminders due? CRO: any dormant customers? etc.
+    Comprehensive hourly scan — all depts check for pending work.
+    Fired every 60 minutes by the autonomous scheduler.
     """
     from backend.events.bus import publish, E
     from backend.memory.supabase_client import get_supabase
-    from datetime import datetime, timezone, timedelta
-
     sb = get_supabase()
     now = datetime.now(timezone.utc)
 
-    # COO: check for appointments needing reminders in next 24h
+    # ── COO: appointments needing reminders ──────────────────
     reminder_window = (now + timedelta(hours=24)).isoformat()
     appts = sb.table("appointments").select("id,customer_id,scheduled_at") \
         .eq("business_id", business_id).eq("status", "confirmed") \
@@ -92,11 +148,11 @@ async def run_hourly_heartbeat(business_id: str):
             "scheduled_at": appt["scheduled_at"],
         }, source="heartbeat")
 
-    # CRO: check for dormant customers (30+ days no visit)
+    # ── CRO: dormant customers ────────────────────────────────
     dormant_cutoff = (now - timedelta(days=30)).isoformat()
     dormant = sb.table("customers").select("id,name,phone") \
         .eq("business_id", business_id).eq("opt_out_sms", False) \
-        .lt("last_visit", dormant_cutoff).limit(10).execute().data or []
+        .lt("last_visit", dormant_cutoff).limit(5).execute().data or []
     for customer in dormant:
         await publish(business_id, E.CUSTOMER_DORMANT, {
             "customer_id": customer["id"],
@@ -104,3 +160,52 @@ async def run_hourly_heartbeat(business_id: str):
             "customer_phone": customer.get("phone", ""),
             "days_inactive": 30,
         }, source="heartbeat")
+
+    # ── CRO: missed calls in last hour ───────────────────────
+    hour_ago = (now - timedelta(hours=1)).isoformat()
+    missed = sb.table("calls").select("id,caller_phone") \
+        .eq("business_id", business_id).eq("status", "missed") \
+        .gte("called_at", hour_ago).execute().data or []
+    for call in missed:
+        await publish(business_id, E.CALL_MISSED, {
+            "customer_phone": call.get("caller_phone"),
+            "call_id": call["id"],
+        }, source="heartbeat")
+
+    # ── CTO: failed workflows in last hour ───────────────────
+    failed = sb.table("tasks").select("id,workflow,error") \
+        .eq("business_id", business_id).eq("status", "failed") \
+        .gte("created_at", hour_ago).execute().data or []
+    for task in failed:
+        await publish(business_id, E.WORKFLOW_FAILED, {
+            "task_id": task["id"],
+            "workflow": task["workflow"],
+            "error": task.get("error", ""),
+        }, source="heartbeat")
+
+    # ── CSD: churn risk customers ────────────────────────────
+    churn = sb.table("customers").select("id,name,phone") \
+        .eq("business_id", business_id).contains("tags", ["churn_risk"]) \
+        .eq("opt_out_sms", False).limit(5).execute().data or []
+    for c in churn:
+        await publish(business_id, E.CUSTOMER_CHURN_RISK, {
+            "customer_id": c["id"],
+            "customer_name": c.get("name", ""),
+        }, source="heartbeat")
+
+    # ── CFO: payment failures in last hour ───────────────────
+    failed_payments = sb.table("tasks").select("id,parameters") \
+        .eq("business_id", business_id).eq("workflow", "recover_failed_payment") \
+        .eq("status", "failed").gte("created_at", hour_ago).execute().data or []
+    for task in failed_payments:
+        await publish(business_id, E.PAYMENT_FAILED,
+            task.get("parameters", {}), source="heartbeat")
+
+    return {
+        "reminders_due": len(appts),
+        "dormant_customers": len(dormant),
+        "missed_calls": len(missed),
+        "failed_workflows": len(failed),
+        "churn_risk": len(churn),
+        "payment_failures": len(failed_payments),
+    }

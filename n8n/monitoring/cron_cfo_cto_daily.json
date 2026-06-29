@@ -1,0 +1,86 @@
+{
+  "name": "CFO + CTO Daily Loop — 10am & 2pm",
+  "active": true,
+  "nodes": [
+    {
+      "id": "cron-cfo",
+      "name": "Cron 10am EST (CFO)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 200],
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 15 * * *" }] }
+      }
+    },
+    {
+      "id": "cron-cto",
+      "name": "Cron 2pm EST (CTO)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 420],
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 19 * * *" }] }
+      }
+    },
+    {
+      "id": "run-cfo",
+      "name": "Trigger CFO Loop",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/cron/department-work?department=cfo",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "x-cron-secret", "value": "={{ $env.CRON_SECRET }}" }]
+        }
+      }
+    },
+    {
+      "id": "run-cto",
+      "name": "Trigger CTO Loop",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 420],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/cron/department-work?department=cto",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "x-cron-secret", "value": "={{ $env.CRON_SECRET }}" }]
+        }
+      }
+    },
+    {
+      "id": "log-both",
+      "name": "Log Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [700, 310],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/notifications_log",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ channel: 'system', message: 'CFO/CTO daily loop triggered', status: 'sent' }) }}"
+      }
+    }
+  ],
+  "connections": {
+    "Cron 10am EST (CFO)": { "main": [[{ "node": "Trigger CFO Loop", "type": "main", "index": 0 }]] },
+    "Cron 2pm EST (CTO)": { "main": [[{ "node": "Trigger CTO Loop", "type": "main", "index": 0 }]] },
+    "Trigger CFO Loop": { "main": [[{ "node": "Log Results", "type": "main", "index": 0 }]] },
+    "Trigger CTO Loop": { "main": [[{ "node": "Log Results", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": ["cron", "autonomous", "cfo", "cto"]
+}

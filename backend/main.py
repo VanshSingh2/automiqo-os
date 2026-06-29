@@ -24,13 +24,20 @@ from backend.api.webhooks import router as webhooks_router
 async def lifespan(app: FastAPI):
     from backend.dispatcher.queue import worker_loop
     from backend.events.worker import event_worker_loop
+    from backend.cron.autonomous_scheduler import start_autonomous_scheduler
+
     task_worker = asyncio.create_task(worker_loop())
     event_worker = asyncio.create_task(event_worker_loop())
-    print("✅ Task worker + Event worker started")
+    scheduler_tasks = await start_autonomous_scheduler()
+
+    print(f"✅ Task worker + Event worker + {len(scheduler_tasks)} scheduler tasks started")
     yield
+
     task_worker.cancel()
     event_worker.cancel()
-    print("Workers stopped")
+    for t in scheduler_tasks:
+        t.cancel()
+    print("All workers stopped")
 
 
 app = FastAPI(title="Automiqo OS", version="1.0.0", lifespan=lifespan)
@@ -83,3 +90,65 @@ async def cron_nightly_learning(x_cron_secret: str = Header(None)):
     from backend.cron.nightly_learning import run_nightly_learning
     asyncio.create_task(run_nightly_learning())
     return {"status": "queued"}
+
+
+@app.post("/cron/department-work")
+async def cron_department_work(x_cron_secret: str = Header(None), department: str = "", business_id: str = ""):
+    """
+    Manually trigger a department's autonomous work loop.
+    department: coo|cmo|cro|cfo|cto|csd|learning|all
+    Used by n8n cron workflows or for manual override.
+    """
+    _check_cron_secret(x_cron_secret)
+    from backend.memory.supabase_client import get_supabase
+    sb = get_supabase()
+
+    # Get business IDs
+    if business_id:
+        bids = [business_id]
+    else:
+        bids = [str(r["id"]) for r in (sb.table("businesses").select("id").eq("active", True).execute().data or [])]
+
+    if not bids:
+        return {"status": "no_active_businesses"}
+
+    loop_map = {
+        "coo":      "backend.autonomous.coo_loop.run_coo_daily_loop",
+        "cmo":      "backend.autonomous.cmo_loop.run_cmo_daily_loop",
+        "cro":      "backend.autonomous.cro_loop.run_cro_daily_loop",
+        "cfo":      "backend.autonomous.cfo_loop.run_cfo_daily_loop",
+        "cto":      "backend.autonomous.cto_loop.run_cto_daily_loop",
+        "csd":      "backend.autonomous.csd_loop.run_csd_daily_loop",
+        "learning": "backend.autonomous.learning_loop.run_learning_daily_loop",
+    }
+
+    depts = list(loop_map.keys()) if department == "all" or not department else [department]
+    queued = []
+
+    for dept in depts:
+        fn_path = loop_map.get(dept)
+        if not fn_path:
+            continue
+        for bid in bids:
+            async def _run(d=dept, fp=fn_path, b=bid):
+                import importlib
+                module_path, fn_name = fp.rsplit(".", 1)
+                mod = importlib.import_module(module_path)
+                return await getattr(mod, fn_name)(b)
+            asyncio.create_task(_run())
+            queued.append(f"{dept}:{bid[:8]}")
+
+    return {"status": "queued", "tasks": queued}
+
+
+@app.post("/cron/heartbeat")
+async def cron_heartbeat(x_cron_secret: str = Header(None)):
+    """Manually trigger hourly heartbeat for all businesses."""
+    _check_cron_secret(x_cron_secret)
+    from backend.events.worker import run_hourly_heartbeat
+    from backend.memory.supabase_client import get_supabase
+    sb = get_supabase()
+    bids = [str(r["id"]) for r in (sb.table("businesses").select("id").eq("active", True).execute().data or [])]
+    for bid in bids:
+        asyncio.create_task(run_hourly_heartbeat(bid))
+    return {"status": "queued", "businesses": len(bids)}

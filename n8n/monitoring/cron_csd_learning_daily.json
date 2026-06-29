@@ -1,0 +1,86 @@
+{
+  "name": "CSD + Learning Daily Loop — 3pm & 10pm",
+  "active": true,
+  "nodes": [
+    {
+      "id": "cron-csd",
+      "name": "Cron 3pm EST (CSD)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 200],
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 20 * * *" }] }
+      }
+    },
+    {
+      "id": "cron-learning",
+      "name": "Cron 10pm EST (Learning)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 420],
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 3 * * *" }] }
+      }
+    },
+    {
+      "id": "run-csd",
+      "name": "Trigger CSD Loop",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 200],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/cron/department-work?department=csd",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "x-cron-secret", "value": "={{ $env.CRON_SECRET }}" }]
+        }
+      }
+    },
+    {
+      "id": "run-learning",
+      "name": "Trigger Learning Loop",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 420],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/cron/department-work?department=learning",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "x-cron-secret", "value": "={{ $env.CRON_SECRET }}" }]
+        }
+      }
+    },
+    {
+      "id": "log-csd-learning",
+      "name": "Log Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [700, 310],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/notifications_log",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ channel: 'system', message: 'CSD/Learning daily loop triggered', status: 'sent' }) }}"
+      }
+    }
+  ],
+  "connections": {
+    "Cron 3pm EST (CSD)": { "main": [[{ "node": "Trigger CSD Loop", "type": "main", "index": 0 }]] },
+    "Cron 10pm EST (Learning)": { "main": [[{ "node": "Trigger Learning Loop", "type": "main", "index": 0 }]] },
+    "Trigger CSD Loop": { "main": [[{ "node": "Log Results", "type": "main", "index": 0 }]] },
+    "Trigger Learning Loop": { "main": [[{ "node": "Log Results", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": ["cron", "autonomous", "csd", "learning"]
+}

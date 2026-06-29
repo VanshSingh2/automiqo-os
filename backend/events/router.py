@@ -40,8 +40,27 @@ EVENT_SUBSCRIPTIONS: dict[str, list[str]] = {
     E.WORKFLOW_COMPLETED:   ["learning"],          # Learning captures outcomes
 
     # Scheduled intelligence
-    E.DAILY_STANDUP:        ["ceo"],               # CEO orchestrates all depts
-    E.HOURLY_HEARTBEAT:     ["coo", "cro"],        # Check for due reminders, dormant customers
+    E.DAILY_STANDUP:        ["ceo"],
+    E.HOURLY_HEARTBEAT:     ["coo", "cro", "cmo", "cfo", "cto", "csd", "learning"],
+
+    # Internal dept-to-dept alerts (CEO notify_department tool)
+    "internal.coo_alert":       ["coo"],
+    "internal.cro_alert":       ["cro"],
+    "internal.cmo_alert":       ["cmo"],
+    "internal.cfo_alert":       ["cfo"],
+    "internal.cto_alert":       ["cto"],
+    "internal.csd_alert":       ["csd"],
+    "internal.learning_alert":  ["learning"],
+    "internal.alert":           ["ceo"],
+
+    # Autonomous dept work triggers (fired by scheduler)
+    "dept.work.coo":    ["coo"],
+    "dept.work.cmo":    ["cmo"],
+    "dept.work.cro":    ["cro"],
+    "dept.work.cfo":    ["cfo"],
+    "dept.work.cto":    ["cto"],
+    "dept.work.csd":    ["csd"],
+    "dept.work.learning": ["learning"],
 }
 
 

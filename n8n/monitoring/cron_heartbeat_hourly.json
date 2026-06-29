@@ -1,0 +1,47 @@
+{
+  "name": "Hourly Heartbeat — All Depts",
+  "active": true,
+  "nodes": [
+    {
+      "id": "cron-heartbeat",
+      "name": "Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 * * * *" }] }
+      }
+    },
+    {
+      "id": "run-heartbeat",
+      "name": "Trigger Heartbeat",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [460, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/cron/heartbeat",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "x-cron-secret", "value": "={{ $env.CRON_SECRET }}" }]
+        }
+      }
+    },
+    {
+      "id": "check-result",
+      "name": "Check Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300],
+      "parameters": {
+        "jsCode": "const result = $input.first().json;\nconsole.log('[heartbeat]', JSON.stringify(result));\nreturn [$input.first()];"
+      }
+    }
+  ],
+  "connections": {
+    "Every Hour": { "main": [[{ "node": "Trigger Heartbeat", "type": "main", "index": 0 }]] },
+    "Trigger Heartbeat": { "main": [[{ "node": "Check Result", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": ["cron", "heartbeat", "autonomous"]
+}
