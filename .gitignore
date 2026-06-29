@@ -13,4 +13,3 @@ build/
 .pytest_cache/
 
 .env
-specialist_library/
