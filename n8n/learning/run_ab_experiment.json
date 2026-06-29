@@ -1,69 +1,18 @@
 {
   "name": "Run A/B Experiment",
+  "active": true,
   "nodes": [
-    {
-      "id": "webhook_trigger",
-      "name": "Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "parameters": {
-        "path": "run_ab_experiment",
-        "httpMethod": "POST"
-      },
-      "position": [
-        250,
-        300
-      ]
-    },
-    {
-      "id": "validate",
-      "name": "Validate Input",
-      "type": "n8n-nodes-base.code",
-      "parameters": {
-        "jsCode": "// Start A/B test between two message variants\nconst { business_id, task_id, parameters } = $input.first().json;\nif (!business_id) throw new Error('Missing business_id');\nreturn [{ json: { business_id, task_id, parameters, validated: true } }];"
-      },
-      "position": [
-        450,
-        300
-      ]
-    },
-    {
-      "id": "respond",
-      "name": "Respond",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { status: 'ok', workflow: 'run_ab_experiment' } }}"
-      },
-      "position": [
-        650,
-        300
-      ]
-    }
+    {"id":"wh","name":"Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[240,300],"parameters":{"httpMethod":"POST","path":"run_ab_experiment","responseMode":"responseNode"}},
+    {"id":"val","name":"Validate","type":"n8n-nodes-base.code","typeVersion":2,"position":[460,300],"parameters":{"jsCode":"const d=$input.first().json;\nif(!d.business_id) throw new Error('Missing business_id');\nconst p=d.parameters||{};\nif(!p.name) throw new Error('Missing experiment name');\nreturn [{json:{business_id:d.business_id,task_id:d.task_id||null,name:p.name,hypothesis:p.hypothesis||'',variant_a:p.variant_a||'control',variant_b:p.variant_b||'treatment',metric:p.metric||'conversion_rate',sample_size:p.sample_size||100,duration_days:p.duration_days||7}}];"}},
+    {"id":"insert","name":"Create Experiment","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[680,300],"parameters":{"method":"POST","url":"={{ $env.SUPABASE_URL }}/rest/v1/experiments","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"},{"name":"Prefer","value":"return=representation"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({business_id:$json.business_id,name:$json.name,hypothesis:$json.hypothesis,variant_a:$json.variant_a,variant_b:$json.variant_b,metric:$json.metric,sample_size:$json.sample_size,duration_days:$json.duration_days,status:'running',started_at:new Date().toISOString(),variant_a_conversions:0,variant_b_conversions:0}) }}"}},
+    {"id":"task","name":"Update Task","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[900,300],"parameters":{"method":"PATCH","url":"={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({status:'completed',result:JSON.stringify({experiment_id:$('Create Experiment').first().json.id,name:$('Validate').first().json.name,status:'running'}),completed_at:new Date().toISOString()}) }}"}},
+    {"id":"resp","name":"Respond","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1120,300],"parameters":{"respondWith":"json","responseBody":"={{ JSON.stringify({success:true,workflow:'run_ab_experiment',experiment_id:$('Create Experiment').first().json.id,name:$('Validate').first().json.name}) }}"}}
   ],
-  "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Validate Input",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate Input": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+  "connections":{
+    "Webhook":{"main":[[{"node":"Validate","type":"main","index":0}]]},
+    "Validate":{"main":[[{"node":"Create Experiment","type":"main","index":0}]]},
+    "Create Experiment":{"main":[[{"node":"Update Task","type":"main","index":0}]]},
+    "Update Task":{"main":[[{"node":"Respond","type":"main","index":0}]]}
   },
-  "active": false,
-  "settings": {}
+  "settings":{"executionOrder":"v1"},"tags":["learning","experiments"]
 }

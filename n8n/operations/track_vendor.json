@@ -1,69 +1,18 @@
 {
   "name": "Track Vendor",
+  "active": true,
   "nodes": [
-    {
-      "id": "webhook_trigger",
-      "name": "Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "parameters": {
-        "path": "track_vendor",
-        "httpMethod": "POST"
-      },
-      "position": [
-        250,
-        300
-      ]
-    },
-    {
-      "id": "validate",
-      "name": "Validate Input",
-      "type": "n8n-nodes-base.code",
-      "parameters": {
-        "jsCode": "// Log vendor activity and update vendor records\nconst { business_id, task_id, parameters } = $input.first().json;\nif (!business_id) throw new Error('Missing business_id');\nreturn [{ json: { business_id, task_id, parameters, validated: true } }];"
-      },
-      "position": [
-        450,
-        300
-      ]
-    },
-    {
-      "id": "respond",
-      "name": "Respond",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { status: 'ok', workflow: 'track_vendor' } }}"
-      },
-      "position": [
-        650,
-        300
-      ]
-    }
+    {"id":"wh","name":"Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[240,300],"parameters":{"httpMethod":"POST","path":"track_vendor","responseMode":"responseNode"}},
+    {"id":"val","name":"Validate","type":"n8n-nodes-base.code","typeVersion":2,"position":[460,300],"parameters":{"jsCode":"const d=$input.first().json;\nif(!d.business_id) throw new Error('Missing business_id');\nconst p=d.parameters||{};\nreturn [{json:{business_id:d.business_id,task_id:d.task_id||null,vendor_name:p.vendor_name||'Unknown',category:p.category||'supplies',contact_email:p.contact_email||null,contact_phone:p.contact_phone||null,last_order_amount:p.last_order_amount||0,notes:p.notes||''}}];"}},
+    {"id":"upsert","name":"Upsert Vendor","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[680,300],"parameters":{"method":"POST","url":"={{ $env.SUPABASE_URL }}/rest/v1/vendors","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"},{"name":"Prefer","value":"resolution=merge-duplicates"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({business_id:$json.business_id,name:$json.vendor_name,category:$json.category,contact_email:$json.contact_email,contact_phone:$json.contact_phone,last_order_amount:$json.last_order_amount,notes:$json.notes,updated_at:new Date().toISOString()}) }}"}},
+    {"id":"task","name":"Update Task","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[900,300],"parameters":{"method":"PATCH","url":"={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({status:'completed',result:JSON.stringify({tracked:true,vendor_name:$('Validate').first().json.vendor_name}),completed_at:new Date().toISOString()}) }}"}},
+    {"id":"resp","name":"Respond","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1120,300],"parameters":{"respondWith":"json","responseBody":"={{ JSON.stringify({success:true,workflow:'track_vendor',vendor_name:$('Validate').first().json.vendor_name}) }}"}}
   ],
-  "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Validate Input",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate Input": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+  "connections":{
+    "Webhook":{"main":[[{"node":"Validate","type":"main","index":0}]]},
+    "Validate":{"main":[[{"node":"Upsert Vendor","type":"main","index":0}]]},
+    "Upsert Vendor":{"main":[[{"node":"Update Task","type":"main","index":0}]]},
+    "Update Task":{"main":[[{"node":"Respond","type":"main","index":0}]]}
   },
-  "active": false,
-  "settings": {}
+  "settings":{"executionOrder":"v1"},"tags":["operations","vendors"]
 }

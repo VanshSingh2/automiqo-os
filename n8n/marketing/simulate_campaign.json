@@ -1,69 +1,20 @@
 {
   "name": "Simulate Campaign",
+  "active": true,
   "nodes": [
-    {
-      "id": "webhook_trigger",
-      "name": "Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "parameters": {
-        "path": "simulate_campaign",
-        "httpMethod": "POST"
-      },
-      "position": [
-        250,
-        300
-      ]
-    },
-    {
-      "id": "validate",
-      "name": "Validate Input",
-      "type": "n8n-nodes-base.code",
-      "parameters": {
-        "jsCode": "// Pre-launch simulation: best/worst/risk scenarios\nconst { business_id, task_id, parameters } = $input.first().json;\nif (!business_id) throw new Error('Missing business_id');\nreturn [{ json: { business_id, task_id, parameters, validated: true } }];"
-      },
-      "position": [
-        450,
-        300
-      ]
-    },
-    {
-      "id": "respond",
-      "name": "Respond",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { status: 'ok', workflow: 'simulate_campaign' } }}"
-      },
-      "position": [
-        650,
-        300
-      ]
-    }
+    {"id":"wh","name":"Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[240,300],"parameters":{"httpMethod":"POST","path":"simulate_campaign","responseMode":"responseNode"}},
+    {"id":"val","name":"Validate","type":"n8n-nodes-base.code","typeVersion":2,"position":[460,300],"parameters":{"jsCode":"const d=$input.first().json;\nif(!d.business_id) throw new Error('Missing business_id');\nconst p=d.parameters||{};\nreturn [{json:{business_id:d.business_id,task_id:d.task_id||null,campaign_name:p.campaign_name||'Test Campaign',channel:p.channel||'sms',target_count:p.target_count||100,expected_open_rate:p.expected_open_rate||0.35,expected_conversion_rate:p.expected_conversion_rate||0.05,cost_per_send:p.cost_per_send||0.01}}];"}},
+    {"id":"simulate","name":"Run Simulation","type":"n8n-nodes-base.code","typeVersion":2,"position":[680,300],"parameters":{"jsCode":"const p=$input.first().json;\nconst opens=Math.round(p.target_count*p.expected_open_rate);\nconst conversions=Math.round(p.target_count*p.expected_conversion_rate);\nconst cost=p.target_count*p.cost_per_send;\nconst avg_booking_value=120;\nconst projected_revenue=conversions*avg_booking_value;\nconst roi=((projected_revenue-cost)/cost*100).toFixed(1);\nreturn [{json:{campaign_name:p.campaign_name,channel:p.channel,target_count:p.target_count,projected_opens:opens,projected_conversions:conversions,projected_revenue:projected_revenue,estimated_cost:cost.toFixed(2),roi_pct:roi,recommendation:roi>200?'LAUNCH — strong ROI':roi>50?'LAUNCH — acceptable ROI':'REVIEW — low ROI',business_id:p.business_id,task_id:p.task_id}}];"}},
+    {"id":"store","name":"Store Simulation","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[900,300],"parameters":{"method":"POST","url":"={{ $env.SUPABASE_URL }}/rest/v1/recommendations","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({business_id:$json.business_id,generated_by:'campaign_simulator',category:'marketing',title:'Campaign simulation: '+$json.campaign_name,description:'Channel: '+$json.channel+' | Projected conversions: '+$json.projected_conversions+' | Revenue: $'+$json.projected_revenue+' | ROI: '+$json.roi_pct+'% | Verdict: '+$json.recommendation,priority:'normal',status:'pending',metadata:JSON.stringify($json)}) }}"}},
+    {"id":"task","name":"Update Task","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1120,300],"parameters":{"method":"PATCH","url":"={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({status:'completed',result:JSON.stringify($('Run Simulation').first().json),completed_at:new Date().toISOString()}) }}"}},
+    {"id":"resp","name":"Respond","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1340,300],"parameters":{"respondWith":"json","responseBody":"={{ JSON.stringify({success:true,workflow:'simulate_campaign',simulation:$('Run Simulation').first().json}) }}"}}
   ],
-  "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Validate Input",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate Input": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+  "connections":{
+    "Webhook":{"main":[[{"node":"Validate","type":"main","index":0}]]},
+    "Validate":{"main":[[{"node":"Run Simulation","type":"main","index":0}]]},
+    "Run Simulation":{"main":[[{"node":"Store Simulation","type":"main","index":0}]]},
+    "Store Simulation":{"main":[[{"node":"Update Task","type":"main","index":0}]]},
+    "Update Task":{"main":[[{"node":"Respond","type":"main","index":0}]]}
   },
-  "active": false,
-  "settings": {}
+  "settings":{"executionOrder":"v1"},"tags":["marketing","simulation"]
 }

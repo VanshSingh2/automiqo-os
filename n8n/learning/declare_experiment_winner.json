@@ -1,69 +1,24 @@
 {
   "name": "Declare Experiment Winner",
+  "active": true,
   "nodes": [
-    {
-      "id": "webhook_trigger",
-      "name": "Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "parameters": {
-        "path": "declare_experiment_winner",
-        "httpMethod": "POST"
-      },
-      "position": [
-        250,
-        300
-      ]
-    },
-    {
-      "id": "validate",
-      "name": "Validate Input",
-      "type": "n8n-nodes-base.code",
-      "parameters": {
-        "jsCode": "// Analyze A/B results and declare winning variant\nconst { business_id, task_id, parameters } = $input.first().json;\nif (!business_id) throw new Error('Missing business_id');\nreturn [{ json: { business_id, task_id, parameters, validated: true } }];"
-      },
-      "position": [
-        450,
-        300
-      ]
-    },
-    {
-      "id": "respond",
-      "name": "Respond",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { status: 'ok', workflow: 'declare_experiment_winner' } }}"
-      },
-      "position": [
-        650,
-        300
-      ]
-    }
+    {"id":"wh","name":"Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[240,300],"parameters":{"httpMethod":"POST","path":"declare_experiment_winner","responseMode":"responseNode"}},
+    {"id":"val","name":"Validate","type":"n8n-nodes-base.code","typeVersion":2,"position":[460,300],"parameters":{"jsCode":"const d=$input.first().json;\nif(!d.business_id) throw new Error('Missing business_id');\nconst p=d.parameters||{};\nif(!p.experiment_id) throw new Error('Missing experiment_id');\nreturn [{json:{business_id:d.business_id,task_id:d.task_id||null,experiment_id:p.experiment_id,winner:p.winner||null,reason:p.reason||'auto_declared'}}];"}},
+    {"id":"fetch","name":"Fetch Experiment","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[680,300],"parameters":{"method":"GET","url":"={{ $env.SUPABASE_URL }}/rest/v1/experiments?id=eq.{{ $json.experiment_id }}&business_id=eq.{{ $json.business_id }}&select=*","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"}]}}},
+    {"id":"decide","name":"Pick Winner","type":"n8n-nodes-base.code","typeVersion":2,"position":[900,300],"parameters":{"jsCode":"const exp=$input.first().json;\nconst declared_winner=$('Validate').first().json.winner;\nconst winner=declared_winner||(exp.variant_b_conversions>exp.variant_a_conversions?'variant_b':'variant_a');\nreturn [{json:{experiment_id:exp.id,winner,name:exp.name||'experiment',metric:exp.metric||'conversion',business_id:$('Validate').first().json.business_id,task_id:$('Validate').first().json.task_id}}];"}},
+    {"id":"update","name":"Update Experiment","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1120,300],"parameters":{"method":"PATCH","url":"={{ $env.SUPABASE_URL }}/rest/v1/experiments?id=eq.{{ $json.experiment_id }}","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({status:'concluded',winner:$json.winner,concluded_at:new Date().toISOString()}) }}"}},
+    {"id":"rec","name":"Create Recommendation","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1340,300],"parameters":{"method":"POST","url":"={{ $env.SUPABASE_URL }}/rest/v1/recommendations","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({business_id:$('Pick Winner').first().json.business_id,generated_by:'learning_director',category:'experiment',title:'Experiment winner: '+$('Pick Winner').first().json.winner,description:'A/B experiment \"'+$('Pick Winner').first().json.name+'\" concluded. Winner: '+$('Pick Winner').first().json.winner+'. Deploy winning variant.',priority:'normal',status:'pending'}) }}"}},
+    {"id":"task","name":"Update Task","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1560,300],"parameters":{"method":"PATCH","url":"={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({status:'completed',result:JSON.stringify({winner:$('Pick Winner').first().json.winner,experiment_id:$('Validate').first().json.experiment_id}),completed_at:new Date().toISOString()}) }}"}},
+    {"id":"resp","name":"Respond","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1780,300],"parameters":{"respondWith":"json","responseBody":"={{ JSON.stringify({success:true,workflow:'declare_experiment_winner',winner:$('Pick Winner').first().json.winner}) }}"}}
   ],
-  "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Validate Input",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate Input": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+  "connections":{
+    "Webhook":{"main":[[{"node":"Validate","type":"main","index":0}]]},
+    "Validate":{"main":[[{"node":"Fetch Experiment","type":"main","index":0}]]},
+    "Fetch Experiment":{"main":[[{"node":"Pick Winner","type":"main","index":0}]]},
+    "Pick Winner":{"main":[[{"node":"Update Experiment","type":"main","index":0}]]},
+    "Update Experiment":{"main":[[{"node":"Create Recommendation","type":"main","index":0}]]},
+    "Create Recommendation":{"main":[[{"node":"Update Task","type":"main","index":0}]]},
+    "Update Task":{"main":[[{"node":"Respond","type":"main","index":0}]]}
   },
-  "active": false,
-  "settings": {}
+  "settings":{"executionOrder":"v1"},"tags":["learning","experiments"]
 }

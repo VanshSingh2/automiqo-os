@@ -1,69 +1,20 @@
 {
   "name": "Fire Event Notification",
+  "active": true,
   "nodes": [
-    {
-      "id": "webhook_trigger",
-      "name": "Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "parameters": {
-        "path": "fire_event_notification",
-        "httpMethod": "POST"
-      },
-      "position": [
-        250,
-        300
-      ]
-    },
-    {
-      "id": "validate",
-      "name": "Validate Input",
-      "type": "n8n-nodes-base.code",
-      "parameters": {
-        "jsCode": "// Publish business event to all department listeners\nconst { business_id, task_id, parameters } = $input.first().json;\nif (!business_id) throw new Error('Missing business_id');\nreturn [{ json: { business_id, task_id, parameters, validated: true } }];"
-      },
-      "position": [
-        450,
-        300
-      ]
-    },
-    {
-      "id": "respond",
-      "name": "Respond",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { status: 'ok', workflow: 'fire_event_notification' } }}"
-      },
-      "position": [
-        650,
-        300
-      ]
-    }
+    {"id":"wh","name":"Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[240,300],"parameters":{"httpMethod":"POST","path":"fire_event_notification","responseMode":"responseNode"}},
+    {"id":"val","name":"Validate","type":"n8n-nodes-base.code","typeVersion":2,"position":[460,300],"parameters":{"jsCode":"const d=$input.first().json;\nif(!d.business_id) throw new Error('Missing business_id');\nconst p=d.parameters||{};\nreturn [{json:{business_id:d.business_id,task_id:d.task_id||null,event_type:p.event_type||'system.notification',title:p.title||'Notification',message:p.message||'',channel:p.channel||'internal',severity:p.severity||'info',recipient_id:p.recipient_id||null}}];"}},
+    {"id":"log","name":"Log Event","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[680,300],"parameters":{"method":"POST","url":"={{ $env.SUPABASE_URL }}/rest/v1/notifications_log","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({business_id:$json.business_id,event_type:$json.event_type,channel:$json.channel,message:$json.message,title:$json.title,severity:$json.severity,sent_at:new Date().toISOString(),status:'sent'}) }}"}},
+    {"id":"route","name":"Route by Channel","type":"n8n-nodes-base.code","typeVersion":2,"position":[900,300],"parameters":{"jsCode":"const d=$input.first().json;\nconst v=$('Validate').first().json;\nreturn [{json:{needs_sms:v.channel==='sms'&&v.recipient_id,needs_email:v.channel==='email'&&v.recipient_id,message:v.message,business_id:v.business_id,task_id:v.task_id}}];"}},
+    {"id":"task","name":"Update Task","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1120,300],"parameters":{"method":"PATCH","url":"={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({status:'completed',result:JSON.stringify({event_type:$('Validate').first().json.event_type,channel:$('Validate').first().json.channel,fired:true}),completed_at:new Date().toISOString()}) }}"}},
+    {"id":"resp","name":"Respond","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1340,300],"parameters":{"respondWith":"json","responseBody":"={{ JSON.stringify({success:true,workflow:'fire_event_notification',event_type:$('Validate').first().json.event_type}) }}"}}
   ],
-  "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Validate Input",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate Input": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+  "connections":{
+    "Webhook":{"main":[[{"node":"Validate","type":"main","index":0}]]},
+    "Validate":{"main":[[{"node":"Log Event","type":"main","index":0}]]},
+    "Log Event":{"main":[[{"node":"Route by Channel","type":"main","index":0}]]},
+    "Route by Channel":{"main":[[{"node":"Update Task","type":"main","index":0}]]},
+    "Update Task":{"main":[[{"node":"Respond","type":"main","index":0}]]}
   },
-  "active": false,
-  "settings": {}
+  "settings":{"executionOrder":"v1"},"tags":["cross_cutting","events"]
 }

@@ -1,228 +1,128 @@
 {
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "name": "send_email_campaign",
-  "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Validate Business",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate Business": {
-      "main": [
-        [
-          {
-            "node": "Business Exists?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Business Exists?": {
-      "main": [
-        [
-          {
-            "node": "Get Customers",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Error",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Mark Complete": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Get Customers": {
-      "main": [
-        [
-          {
-            "node": "Mark Complete",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
-  },
+  "name": "Send Email Campaign",
+  "active": true,
   "nodes": [
     {
-      "id": "wh-email",
+      "id": "wh-ec",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
-      "position": [
-        240,
-        300
-      ],
-      "parameters": {
-        "path": "send_email_campaign",
-        "responseMode": "responseNode",
-        "httpMethod": "POST"
-      },
-      "typeVersion": 2
+      "typeVersion": 2,
+      "position": [240, 300],
+      "parameters": { "httpMethod": "POST", "path": "send_email_campaign", "responseMode": "responseNode" }
     },
     {
-      "id": "val-email",
-      "name": "Validate Business",
-      "credentials": {
-        "supabaseApi": {
-          "name": "Supabase_Main"
-        }
-      },
-      "type": "n8n-nodes-base.supabase",
-      "position": [
-        460,
-        300
-      ],
+      "id": "val-ec",
+      "name": "Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
       "parameters": {
-        "tableId": "businesses",
-        "operation": "select",
-        "filters": {
-          "conditions": [
-            {
-              "keyValue": "={{ $json.business_id }}",
-              "condition": "equals",
-              "keyName": "id"
-            }
-          ]
-        }
-      },
-      "typeVersion": 1
+        "jsCode": "const d=$input.first().json;\nif(!d.business_id) throw new Error('Missing business_id');\nconst p=d.parameters||{};\nreturn [{json:{business_id:d.business_id,task_id:d.task_id||null,subject:p.subject||'A message from us',body:p.body||p.message||'',from_name:p.from_name||'Automiqo',limit:p.limit||200,tags:p.tags||[]}}];"
+      }
     },
     {
-      "id": "chk-email",
-      "name": "Business Exists?",
-      "type": "n8n-nodes-base.if",
-      "position": [
-        680,
-        300
-      ],
+      "id": "fetch-ec",
+      "name": "Get Customers with Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 300],
       "parameters": {
-        "conditions": {
-          "options": {
-            "operation": "largerEqual",
-            "rightValue": 1,
-            "leftValue": "={{ $json.length }}"
-          }
-        }
-      },
-      "typeVersion": 2
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/customers?business_id=eq.{{ $json.business_id }}&opt_out_email=eq.false&email=not.is.null&limit={{ $json.limit }}&select=id,name,email,tags",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          {"name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}"},
+          {"name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"}
+        ]}
+      }
     },
     {
+      "id": "build-ec",
+      "name": "Build Emails",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300],
       "parameters": {
-        "operation": "select",
-        "tableId": "customers"
-      },
-      "id": "query-email",
-      "type": "n8n-nodes-base.supabase",
-      "credentials": {
-        "supabaseApi": {
-          "name": "Supabase_Main"
-        }
-      },
-      "name": "Get Customers",
-      "position": [
-        900,
-        200
-      ],
-      "typeVersion": 1
+        "jsCode": "const customers=$input.all().map(i=>i.json);\nconst v=$('Validate').first().json;\nreturn customers.map(c=>({json:{customer_id:c.id,to:c.email,to_name:c.name||'',subject:v.subject,body:v.body.replace('{name}',c.name||'there'),from_name:v.from_name}}));"
+      }
     },
     {
-      "id": "upd-email",
-      "name": "Mark Complete",
-      "credentials": {
-        "supabaseApi": {
-          "name": "Supabase_Main"
-        }
-      },
-      "type": "n8n-nodes-base.supabase",
-      "position": [
-        1340,
-        200
-      ],
+      "id": "send-ec",
+      "name": "Send via Resend",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1120, 300],
       "parameters": {
-        "tableId": "tasks",
-        "operation": "update",
-        "fieldsUi": {
-          "fieldValues": [
-            {
-              "fieldId": "status",
-              "fieldValue": "completed"
-            },
-            {
-              "fieldId": "completed_at",
-              "fieldValue": "={{ new Date().toISOString() }}"
-            }
-          ]
-        },
-        "dataToSend": "defineBelow",
-        "filters": {
-          "conditions": [
-            {
-              "keyValue": "={{ $('Webhook').item.json.task_id }}",
-              "condition": "equals",
-              "keyName": "id"
-            },
-            {
-              "keyName": "business_id",
-              "keyValue": "={{ $('Extract Params').item.json.business_id }}",
-              "condition": "eq"
-            }
-          ]
-        }
-      },
-      "typeVersion": 1
+        "method": "POST",
+        "url": "https://api.resend.com/emails",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          {"name": "Authorization", "value": "=Bearer {{ $env.RESEND_API_KEY }}"},
+          {"name": "Content-Type", "value": "application/json"}
+        ]},
+        "sendBody": true, "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({from:$json.from_name+' <noreply@automiqo.com>',to:[$json.to],subject:$json.subject,text:$json.body}) }}"
+      }
     },
     {
-      "id": "res-email",
+      "id": "log-ec",
+      "name": "Log to Messages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1340, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          {"name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}"},
+          {"name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},
+          {"name": "Content-Type", "value": "application/json"}
+        ]},
+        "sendBody": true, "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({business_id:$('Validate').first().json.business_id,customer_id:$('Build Emails').item.json.customer_id,channel:'email',direction:'outbound',body:$('Build Emails').item.json.subject,status:'sent'}) }}"
+      }
+    },
+    {
+      "id": "task-ec",
+      "name": "Update Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1560, 300],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [
+          {"name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}"},
+          {"name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},
+          {"name": "Content-Type", "value": "application/json"}
+        ]},
+        "sendBody": true, "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({status:'completed',result:JSON.stringify({sent_count:$('Send via Resend').all().length}),completed_at:new Date().toISOString()}) }}"
+      }
+    },
+    {
+      "id": "resp-ec",
       "name": "Respond",
       "type": "n8n-nodes-base.respondToWebhook",
-      "position": [
-        1560,
-        200
-      ],
+      "typeVersion": 1,
+      "position": [1780, 300],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={\"success\": true, \"message\": \"Done\"}"
-      },
-      "typeVersion": 1
-    },
-    {
-      "id": "err-email",
-      "name": "Error",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "position": [
-        900,
-        420
-      ],
-      "parameters": {
-        "responseBody": "={\"success\": false, \"message\": \"Business not found\"}",
-        "respondWith": "json",
-        "responseCode": 404
-      },
-      "typeVersion": 1
+        "responseBody": "={{ JSON.stringify({success:true,workflow:'send_email_campaign',sent_count:$('Send via Resend').all().length}) }}"
+      }
     }
-  ]
+  ],
+  "connections": {
+    "Webhook":                 {"main": [[{"node": "Validate",                "type": "main", "index": 0}]]},
+    "Validate":                {"main": [[{"node": "Get Customers with Email","type": "main", "index": 0}]]},
+    "Get Customers with Email":{"main": [[{"node": "Build Emails",            "type": "main", "index": 0}]]},
+    "Build Emails":            {"main": [[{"node": "Send via Resend",         "type": "main", "index": 0}]]},
+    "Send via Resend":         {"main": [[{"node": "Log to Messages",         "type": "main", "index": 0}]]},
+    "Log to Messages":         {"main": [[{"node": "Update Task",             "type": "main", "index": 0}]]},
+    "Update Task":             {"main": [[{"node": "Respond",                 "type": "main", "index": 0}]]}
+  },
+  "settings": {"executionOrder": "v1"},
+  "tags": ["marketing", "email", "campaign"]
 }

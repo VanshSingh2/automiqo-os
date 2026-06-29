@@ -1,69 +1,24 @@
 {
   "name": "Monitor Calendar Sync",
+  "active": true,
   "nodes": [
-    {
-      "id": "webhook_trigger",
-      "name": "Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "parameters": {
-        "path": "monitor_calendar_sync",
-        "httpMethod": "POST"
-      },
-      "position": [
-        250,
-        300
-      ]
-    },
-    {
-      "id": "validate",
-      "name": "Validate Input",
-      "type": "n8n-nodes-base.code",
-      "parameters": {
-        "jsCode": "// Check Cal.com sync status and alert on failures\nconst { business_id, task_id, parameters } = $input.first().json;\nif (!business_id) throw new Error('Missing business_id');\nreturn [{ json: { business_id, task_id, parameters, validated: true } }];"
-      },
-      "position": [
-        450,
-        300
-      ]
-    },
-    {
-      "id": "respond",
-      "name": "Respond",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { status: 'ok', workflow: 'monitor_calendar_sync' } }}"
-      },
-      "position": [
-        650,
-        300
-      ]
-    }
+    {"id":"wh","name":"Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[240,300],"parameters":{"httpMethod":"POST","path":"monitor_calendar_sync","responseMode":"responseNode"}},
+    {"id":"val","name":"Validate","type":"n8n-nodes-base.code","typeVersion":2,"position":[460,300],"parameters":{"jsCode":"const d=$input.first().json;\nif(!d.business_id) throw new Error('Missing business_id');\nreturn [{json:{business_id:d.business_id,task_id:d.task_id||null}}];"}},
+    {"id":"check-cal","name":"Check Cal.com API","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[680,300],"parameters":{"method":"GET","url":"={{ $env.CAL_COM_BASE_URL || 'https://api.cal.com/v2' }}/event-types","sendHeaders":true,"headerParameters":{"parameters":[{"name":"Authorization","value":"=Bearer {{ $env.CAL_COM_API_KEY }}"},{"name":"cal-api-version","value":"={{ $env.CAL_COM_API_VERSION || '2024-08-13' }}"}]},"options":{"timeout":10000}}},
+    {"id":"check-appts","name":"Check Appointment Sync","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[900,300],"parameters":{"method":"GET","url":"={{ $env.SUPABASE_URL }}/rest/v1/appointments?business_id=eq.{{ $('Validate').first().json.business_id }}&status=eq.confirmed&created_at=gte.{{ new Date(Date.now()-3600000).toISOString() }}&select=id,cal_booking_uid","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"}]}}},
+    {"id":"assess","name":"Assess Sync Health","type":"n8n-nodes-base.code","typeVersion":2,"position":[1120,300],"parameters":{"jsCode":"const calOk=$('Check Cal.com API').first().json.data||$('Check Cal.com API').first().json.status!==undefined;\nconst appts=$('Check Appointment Sync').all().map(i=>i.json);\nconst missing_uid=appts.filter(a=>!a.cal_booking_uid).length;\nconst status=calOk&&missing_uid===0?'PASS':!calOk?'FAIL':'WARN';\nreturn [{json:{status,cal_api_ok:calOk,appointments_checked:appts.length,missing_cal_uid:missing_uid,business_id:$('Validate').first().json.business_id,task_id:$('Validate').first().json.task_id}}];"}},
+    {"id":"alert","name":"Alert if Failing","type":"n8n-nodes-base.code","typeVersion":2,"position":[1340,300],"parameters":{"jsCode":"const d=$input.first().json;\nif(d.status==='FAIL'){console.error('[ALERT] Calendar sync failing for',d.business_id,'— Cal.com API unreachable');}\nreturn [$input.first()];"}},
+    {"id":"task","name":"Update Task","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1560,300],"parameters":{"method":"PATCH","url":"={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({status:'completed',result:JSON.stringify($('Assess Sync Health').first().json),completed_at:new Date().toISOString()}) }}"}},
+    {"id":"resp","name":"Respond","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1780,300],"parameters":{"respondWith":"json","responseBody":"={{ JSON.stringify({success:true,workflow:'monitor_calendar_sync',status:$('Assess Sync Health').first().json.status,cal_api_ok:$('Assess Sync Health').first().json.cal_api_ok}) }}"}}
   ],
-  "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Validate Input",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate Input": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+  "connections":{
+    "Webhook":{"main":[[{"node":"Validate","type":"main","index":0}]]},
+    "Validate":{"main":[[{"node":"Check Cal.com API","type":"main","index":0}]]},
+    "Check Cal.com API":{"main":[[{"node":"Check Appointment Sync","type":"main","index":0}]]},
+    "Check Appointment Sync":{"main":[[{"node":"Assess Sync Health","type":"main","index":0}]]},
+    "Assess Sync Health":{"main":[[{"node":"Alert if Failing","type":"main","index":0}]]},
+    "Alert if Failing":{"main":[[{"node":"Update Task","type":"main","index":0}]]},
+    "Update Task":{"main":[[{"node":"Respond","type":"main","index":0}]]}
   },
-  "active": false,
-  "settings": {}
+  "settings":{"executionOrder":"v1"},"tags":["monitoring","calendar"]
 }

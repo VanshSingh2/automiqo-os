@@ -133,7 +133,7 @@
     {
       "parameters": {
         "method": "GET",
-        "url": "http://backend:8000/check",
+        "url": "={{ $env.BACKEND_URL }}/health",
         "genericAuthType": "httpHeaderAuth",
         "authentication": "generic"
       },
@@ -221,5 +221,6 @@
       },
       "typeVersion": 1
     }
-  ]
+  ],
+  "active": true
 }

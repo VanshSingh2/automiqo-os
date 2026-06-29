@@ -1,69 +1,22 @@
 {
   "name": "Update Agent Confidence",
+  "active": true,
   "nodes": [
-    {
-      "id": "webhook_trigger",
-      "name": "Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "parameters": {
-        "path": "update_agent_confidence",
-        "httpMethod": "POST"
-      },
-      "position": [
-        250,
-        300
-      ]
-    },
-    {
-      "id": "validate",
-      "name": "Validate Input",
-      "type": "n8n-nodes-base.code",
-      "parameters": {
-        "jsCode": "// Record agent decision confidence score\nconst { business_id, task_id, parameters } = $input.first().json;\nif (!business_id) throw new Error('Missing business_id');\nreturn [{ json: { business_id, task_id, parameters, validated: true } }];"
-      },
-      "position": [
-        450,
-        300
-      ]
-    },
-    {
-      "id": "respond",
-      "name": "Respond",
-      "type": "n8n-nodes-base.respondToWebhook",
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ { status: 'ok', workflow: 'update_agent_confidence' } }}"
-      },
-      "position": [
-        650,
-        300
-      ]
-    }
+    {"id":"wh","name":"Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[240,300],"parameters":{"httpMethod":"POST","path":"update_agent_confidence","responseMode":"responseNode"}},
+    {"id":"val","name":"Validate","type":"n8n-nodes-base.code","typeVersion":2,"position":[460,300],"parameters":{"jsCode":"const d=$input.first().json;\nif(!d.business_id) throw new Error('Missing business_id');\nconst p=d.parameters||{};\nreturn [{json:{business_id:d.business_id,task_id:d.task_id||null,date:p.date||new Date().toISOString().split('T')[0],metrics:p.metrics||{},agent_name:p.agent_name||'all'}}];"}},
+    {"id":"fetch","name":"Fetch Recent Tasks","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[680,300],"parameters":{"method":"GET","url":"={{ $env.SUPABASE_URL }}/rest/v1/tasks?business_id=eq.{{ $json.business_id }}&created_at=gte.{{ $json.date }}T00:00:00Z&select=status,workflow,created_by","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"}]}}},
+    {"id":"calc","name":"Calculate Confidence","type":"n8n-nodes-base.code","typeVersion":2,"position":[900,300],"parameters":{"jsCode":"const tasks=$input.all().map(i=>i.json);\nconst total=tasks.length||1;\nconst completed=tasks.filter(t=>t.status==='completed').length;\nconst failed=tasks.filter(t=>t.status==='failed').length;\nconst confidence=Math.round(completed/total*100);\nreturn [{json:{confidence_score:confidence,total_tasks:total,completed,failed,date:$('Validate').first().json.date,business_id:$('Validate').first().json.business_id,task_id:$('Validate').first().json.task_id}}];"}},
+    {"id":"upsert","name":"Upsert Confidence","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1120,300],"parameters":{"method":"POST","url":"={{ $env.SUPABASE_URL }}/rest/v1/agent_memory","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"},{"name":"Prefer","value":"resolution=merge-duplicates"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({business_id:$json.business_id,memory_type:'confidence_score',key:$json.date,value:JSON.stringify({confidence:$json.confidence_score,tasks_completed:$json.completed,tasks_failed:$json.failed,total:$json.total_tasks}),updated_at:new Date().toISOString()}) }}"}},
+    {"id":"task","name":"Update Task","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1340,300],"parameters":{"method":"PATCH","url":"={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({status:'completed',result:JSON.stringify({confidence_score:$('Calculate Confidence').first().json.confidence_score}),completed_at:new Date().toISOString()}) }}"}},
+    {"id":"resp","name":"Respond","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1560,300],"parameters":{"respondWith":"json","responseBody":"={{ JSON.stringify({success:true,workflow:'update_agent_confidence',confidence_score:$('Calculate Confidence').first().json.confidence_score}) }}"}}
   ],
-  "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Validate Input",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate Input": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+  "connections":{
+    "Webhook":{"main":[[{"node":"Validate","type":"main","index":0}]]},
+    "Validate":{"main":[[{"node":"Fetch Recent Tasks","type":"main","index":0}]]},
+    "Fetch Recent Tasks":{"main":[[{"node":"Calculate Confidence","type":"main","index":0}]]},
+    "Calculate Confidence":{"main":[[{"node":"Upsert Confidence","type":"main","index":0}]]},
+    "Upsert Confidence":{"main":[[{"node":"Update Task","type":"main","index":0}]]},
+    "Update Task":{"main":[[{"node":"Respond","type":"main","index":0}]]}
   },
-  "active": false,
-  "settings": {}
+  "settings":{"executionOrder":"v1"},"tags":["learning","confidence"]
 }
