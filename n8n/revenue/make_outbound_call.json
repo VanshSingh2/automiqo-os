@@ -1,0 +1,20 @@
+{
+  "name": "Make Outbound Call",
+  "active": true,
+  "nodes": [
+    {"id":"wh","name":"Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[240,300],"parameters":{"httpMethod":"POST","path":"make_outbound_call","responseMode":"responseNode"}},
+    {"id":"val","name":"Validate","type":"n8n-nodes-base.code","typeVersion":2,"position":[460,300],"parameters":{"jsCode":"const d=$input.first().json;\nif(!d.business_id) throw new Error('Missing business_id');\nconst p=d.parameters||{};\nif(!p.customer_phone) throw new Error('Missing customer_phone');\nreturn [{json:{business_id:d.business_id,task_id:d.task_id||null,customer_phone:p.customer_phone,purpose:p.purpose||'missed_call_recovery',customer_name:p.customer_name||'',context:p.context||{}}}];"}},
+    {"id":"vapi","name":"Initiate VAPI Call","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[680,300],"parameters":{"method":"POST","url":"={{ $env.BACKEND_URL }}/calls/outbound","sendHeaders":true,"headerParameters":{"parameters":[{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({business_id:$json.business_id,customer_phone:$json.customer_phone,purpose:$json.purpose,context:{...($json.context||{}),customer_name:$json.customer_name}}) }}"}},
+    {"id":"log","name":"Log Call Attempt","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[900,300],"parameters":{"method":"POST","url":"={{ $env.SUPABASE_URL }}/rest/v1/calls","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({business_id:$('Validate').first().json.business_id,direction:'outbound',caller_phone:$('Validate').first().json.customer_phone,status:'initiated',outcome:$('Validate').first().json.purpose,vapi_call_id:$('Initiate VAPI Call').first().json.call_id||null,called_at:new Date().toISOString()}) }}"}},
+    {"id":"task","name":"Update Task","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1120,300],"parameters":{"method":"PATCH","url":"={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({status:'completed',result:JSON.stringify($('Initiate VAPI Call').first().json),completed_at:new Date().toISOString()}) }}"}},
+    {"id":"resp","name":"Respond","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1340,300],"parameters":{"respondWith":"json","responseBody":"={{ JSON.stringify({success:true,workflow:'make_outbound_call',call_id:$('Initiate VAPI Call').first().json.call_id,status:$('Initiate VAPI Call').first().json.status}) }}"}}
+  ],
+  "connections":{
+    "Webhook":{"main":[[{"node":"Validate","type":"main","index":0}]]},
+    "Validate":{"main":[[{"node":"Initiate VAPI Call","type":"main","index":0}]]},
+    "Initiate VAPI Call":{"main":[[{"node":"Log Call Attempt","type":"main","index":0}]]},
+    "Log Call Attempt":{"main":[[{"node":"Update Task","type":"main","index":0}]]},
+    "Update Task":{"main":[[{"node":"Respond","type":"main","index":0}]]}
+  },
+  "settings":{"executionOrder":"v1"},"tags":["revenue","calling","vapi"]
+}

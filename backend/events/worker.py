@@ -186,6 +186,13 @@ async def run_hourly_heartbeat(business_id: str):
             "error": task.get("error", ""),
         }, source="heartbeat")
 
+    # ── Nurture sequences: run all due steps ─────────────────
+    try:
+        from backend.integrations.nurture_sequences import run_due_sequences
+        await run_due_sequences(business_id)
+    except Exception:
+        pass
+
     # ── CSD: churn risk customers ────────────────────────────
     churn = sb.table("customers").select("id,name,phone") \
         .eq("business_id", business_id).contains("tags", ["churn_risk"]) \

@@ -1,0 +1,18 @@
+{
+  "name": "Nurture Sequence: cold_lead",
+  "active": true,
+  "nodes": [
+    {"id":"wh","name":"Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[240,300],"parameters":{"httpMethod":"POST","path":"nurture_cold_lead","responseMode":"responseNode"}},
+    {"id":"val","name":"Validate","type":"n8n-nodes-base.code","typeVersion":2,"position":[460,300],"parameters":{"jsCode":"const d=$input.first().json;\nif(!d.business_id) throw new Error('Missing business_id');\nconst p=d.parameters||{};\nreturn [{json:{business_id:d.business_id,task_id:d.task_id||null,contact_id:p.contact_id,contact_type:p.contact_type||'lead',phone:p.phone||'',email:p.email||'',sequence_name:'cold_lead',context:p.context||{name:p.name||'',company:p.company||'',industry:p.industry||'service',booking_url:p.booking_url||''}}}];"}},
+    {"id":"enroll","name":"Enroll in Sequence","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[680,300],"parameters":{"method":"POST","url":"={{ $env.BACKEND_URL }}/nurture/enroll","sendHeaders":true,"headerParameters":{"parameters":[{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify($json) }}"}},
+    {"id":"task","name":"Update Task","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[900,300],"parameters":{"method":"PATCH","url":"={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({status:'completed',result:JSON.stringify($('Enroll in Sequence').first().json),completed_at:new Date().toISOString()}) }}"}},
+    {"id":"resp","name":"Respond","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1120,300],"parameters":{"respondWith":"json","responseBody":"={{ JSON.stringify({success:true,workflow:'nurture_cold_lead',enrolled:$('Enroll in Sequence').first().json.enrolled}) }}"}}
+  ],
+  "connections":{
+    "Webhook":{"main":[[{"node":"Validate","type":"main","index":0}]]},
+    "Validate":{"main":[[{"node":"Enroll in Sequence","type":"main","index":0}]]},
+    "Enroll in Sequence":{"main":[[{"node":"Update Task","type":"main","index":0}]]},
+    "Update Task":{"main":[[{"node":"Respond","type":"main","index":0}]]}
+  },
+  "settings":{"executionOrder":"v1"},"tags":["marketing","nurture","cold_lead"]
+}

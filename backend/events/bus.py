@@ -40,6 +40,12 @@ class E:
     PAYMENT_FAILED      = "payment.failed"
     MEMBERSHIP_EXPIRING = "membership.expiring"
     UPSELL_OPPORTUNITY  = "upsell.opportunity"
+    REFERRAL_CONVERTED  = "referral.converted"
+
+    # Nurture sequences
+    SEQUENCE_ENROLLED   = "sequence.enrolled"
+    SEQUENCE_STEP_DUE   = "sequence.step_due"
+    SEQUENCE_COMPLETED  = "sequence.completed"
 
     # Platform
     WORKFLOW_FAILED     = "workflow.failed"

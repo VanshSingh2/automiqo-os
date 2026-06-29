@@ -1,0 +1,24 @@
+{
+  "name": "Track Referral",
+  "active": true,
+  "nodes": [
+    {"id":"wh","name":"Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[240,300],"parameters":{"httpMethod":"POST","path":"track_referral","responseMode":"responseNode"}},
+    {"id":"val","name":"Validate","type":"n8n-nodes-base.code","typeVersion":2,"position":[460,300],"parameters":{"jsCode":"const d=$input.first().json;\nif(!d.business_id) throw new Error('Missing business_id');\nconst p=d.parameters||{};\nreturn [{json:{business_id:d.business_id,task_id:d.task_id||null,action:p.action||'create',customer_id:p.customer_id||null,customer_name:p.customer_name||'',referral_code:p.referral_code||null,referred_customer_id:p.referred_customer_id||null,reward_amount:p.reward_amount||25}}];"}},
+    {"id":"route","name":"Route Action","type":"n8n-nodes-base.switch","typeVersion":3,"position":[680,300],"parameters":{"mode":"rules","options":{},"rules":{"values":[{"conditions":{"options":{"caseSensitive":false},"conditions":[{"leftValue":"={{ $json.action }}","rightValue":"create","operator":{"type":"string","operation":"equals"}}]},"renameOutput":true,"outputKey":"Create"},{"conditions":{"options":{"caseSensitive":false},"conditions":[{"leftValue":"={{ $json.action }}","rightValue":"redeem","operator":{"type":"string","operation":"equals"}}]},"renameOutput":true,"outputKey":"Redeem"}]}}},
+    {"id":"create","name":"Create Referral Code","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[900,150],"parameters":{"method":"POST","url":"={{ $env.BACKEND_URL }}/referrals/create","sendHeaders":true,"headerParameters":{"parameters":[{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({business_id:$json.business_id,customer_id:$json.customer_id,customer_name:$json.customer_name,reward_amount:$json.reward_amount}) }}"}},
+    {"id":"send-code","name":"Send Code via SMS","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1100,150],"parameters":{"method":"POST","url":"=https://api.twilio.com/2010-04-01/Accounts/{{ $env.TWILIO_ACCOUNT_SID }}/Messages.json","authentication":"genericCredentialType","genericAuthType":"httpBasicAuth","sendBody":true,"contentType":"form-urlencoded","bodyParameters":{"parameters":[{"name":"To","value":"={{ $('Validate').first().json.customer_phone||'' }}"},{"name":"From","value":"={{ $env.TWILIO_PHONE_NUMBER }}"},{"name":"Body","value":"=Hi {{ $('Validate').first().json.customer_name }}! 🎁 Your referral code is {{ $('Create Referral Code').first().json.referral_code }}. Share it with friends — when they book, you BOTH get ${{ $('Validate').first().json.reward_amount }} off!"}]}}},
+    {"id":"redeem","name":"Redeem Referral","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[900,450],"parameters":{"method":"POST","url":"={{ $env.BACKEND_URL }}/referrals/redeem","sendHeaders":true,"headerParameters":{"parameters":[{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({business_id:$json.business_id,referral_code:$json.referral_code,referred_customer_id:$json.referred_customer_id}) }}"}},
+    {"id":"task","name":"Update Task","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1340,300],"parameters":{"method":"PATCH","url":"={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({status:'completed',result:JSON.stringify({action:$('Validate').first().json.action,done:true}),completed_at:new Date().toISOString()}) }}"}},
+    {"id":"resp","name":"Respond","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1560,300],"parameters":{"respondWith":"json","responseBody":"={{ JSON.stringify({success:true,workflow:'track_referral',action:$('Validate').first().json.action}) }}"}}
+  ],
+  "connections":{
+    "Webhook":{"main":[[{"node":"Validate","type":"main","index":0}]]},
+    "Validate":{"main":[[{"node":"Route Action","type":"main","index":0}]]},
+    "Route Action":{"Create":[[{"node":"Create Referral Code","type":"main","index":0}]],"Redeem":[[{"node":"Redeem Referral","type":"main","index":0}]]},
+    "Create Referral Code":{"main":[[{"node":"Send Code via SMS","type":"main","index":0}]]},
+    "Send Code via SMS":{"main":[[{"node":"Update Task","type":"main","index":0}]]},
+    "Redeem Referral":{"main":[[{"node":"Update Task","type":"main","index":0}]]},
+    "Update Task":{"main":[[{"node":"Respond","type":"main","index":0}]]}
+  },
+  "settings":{"executionOrder":"v1"},"tags":["revenue","referrals"]
+}
