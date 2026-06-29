@@ -183,7 +183,7 @@ async def suite_schemas(bid: str) -> list[dict]:
             business_id=UUID(bid),
             created_by="test",
             workflow="test_workflow",
-            priority=TaskPriority.normal,
+            priority=TaskPriority.NORMAL,
             parameters={"k": "v"},
         )
         assert t.workflow == "test_workflow"
@@ -281,10 +281,10 @@ async def suite_events(bid: str) -> list[dict]:
 
     # 5b. Event router
     try:
-        from backend.events.router import get_handlers, SUBSCRIPTIONS
+        from backend.events.router import get_handlers, EVENT_SUBSCRIPTIONS
         handlers = get_handlers("appointment.booked")
         results.append(_pass("event_router", f"appointment.booked → {handlers}",
-                             {"total_event_types": len(SUBSCRIPTIONS)}))
+                             {"total_event_types": len(EVENT_SUBSCRIPTIONS)}))
     except Exception as e:
         results.append(_fail("event_router", str(e)))
 
@@ -297,8 +297,8 @@ async def suite_events(bid: str) -> list[dict]:
 
     # 5d. Conversation manager
     try:
-        from backend.conversations.manager import ConversationManager
-        results.append(_pass("conversation_manager", "ConversationManager importable"))
+        from backend.conversations.manager import handle_inbound_sms
+        results.append(_pass("conversation_manager", "conversation manager importable"))
     except Exception as e:
         results.append(_fail("conversation_manager", str(e)))
 
@@ -509,9 +509,9 @@ async def suite_autonomous(bid: str) -> list[dict]:
 
     # 9c. Event router has all dept.work.* routes
     try:
-        from backend.events.router import SUBSCRIPTIONS
-        dept_triggers = [k for k in SUBSCRIPTIONS if k.startswith("dept.work.")]
-        internal_alerts = [k for k in SUBSCRIPTIONS if k.startswith("internal.")]
+        from backend.events.router import EVENT_SUBSCRIPTIONS
+        dept_triggers = [k for k in EVENT_SUBSCRIPTIONS if k.startswith("dept.work.")]
+        internal_alerts = [k for k in EVENT_SUBSCRIPTIONS if k.startswith("internal.")]
         results.append(_pass("event_routes_complete",
             f"{len(dept_triggers)} dept.work triggers, {len(internal_alerts)} internal alert routes",
             {"dept_triggers": dept_triggers, "internal_alerts": internal_alerts}))

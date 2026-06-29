@@ -5,7 +5,7 @@ everything flows through here. One source of truth.
 
 Usage:
     from backend.engines.policy_engine import policy
-    result = await policy.check("send_cold_outreach", {"phone": "+1..."}, business_id)
+    result = policy.check("send_cold_outreach", {"phone": "+1..."}, business_id)
     if result.blocked: raise approval needed
     if result.auto_approved: proceed
 """

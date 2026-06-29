@@ -83,6 +83,7 @@ async def run_pipeline(
             if lead.get("score", 0) > 0:
                 sb.table("leads").update({
                     "score": lead.get("score", 0),
+                    "tier": lead.get("tier", "C"),
                     "score_reasons": lead.get("score_reasons", ""),
                     "has_booking_system": lead.get("has_booking_system", False),
                     "email": lead.get("email"),
@@ -105,6 +106,7 @@ async def run_pipeline(
                 "has_booking_system": lead.get("has_booking_system", False),
                 "has_website": lead.get("has_website", bool(lead.get("website"))),
                 "score": lead.get("score", 0),
+                "tier": lead.get("tier", "C"),
                 "notes": lead.get("score_reasons", ""),
                 "source": lead.get("source", "google_maps"),
                 "status": "new",

@@ -51,7 +51,11 @@ EVENT_SUBSCRIPTIONS: dict[str, list[str]] = {
     "internal.cto_alert":       ["cto"],
     "internal.csd_alert":       ["csd"],
     "internal.learning_alert":  ["learning"],
+    "internal.ceo_alert":       ["ceo"],
     "internal.alert":           ["ceo"],
+
+    # Opportunity engine surfaced opportunities
+    "opportunity.detected":     ["ceo"],
 
     # Autonomous dept work triggers (fired by scheduler)
     "dept.work.coo":    ["coo"],

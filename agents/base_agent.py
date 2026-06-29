@@ -56,6 +56,17 @@ class BaseAgent(ABC):
     def _parse_response(content: str) -> "AgentResponse":
         """Parse LLM response, stripping markdown code fences if present."""
         import re, json
+        # Coerce list content (e.g. Anthropic returns a list of content blocks) to string
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if isinstance(block, dict):
+                    parts.append(block.get("text", "") or block.get("content", ""))
+                else:
+                    parts.append(str(block))
+            content = "".join(parts)
+        elif not isinstance(content, str):
+            content = str(content)
         m = re.search(r"```[\w]*\s*([\s\S]*?)```", content)
         clean = m.group(1).strip() if m else content.strip()
         try:

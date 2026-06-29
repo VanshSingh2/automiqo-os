@@ -268,7 +268,7 @@ async def _send_sequence_step(enrollment: dict) -> None:
             business_id=UUID(bid),
             created_by="nurture_sequence",
             workflow="send_sms_campaign",
-            priority=TaskPriority.normal,
+            priority=TaskPriority.NORMAL,
             parameters={"message": message, "phone": phone, "limit": 1},
         ))
     elif channel == "email" and email_addr:
@@ -276,7 +276,7 @@ async def _send_sequence_step(enrollment: dict) -> None:
             business_id=UUID(bid),
             created_by="nurture_sequence",
             workflow="send_email_campaign",
-            priority=TaskPriority.normal,
+            priority=TaskPriority.NORMAL,
             parameters={"subject": "Following up from your team", "body": message,
                         "recipient_email": email_addr, "limit": 1},
         ))

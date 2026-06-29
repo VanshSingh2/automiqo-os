@@ -107,3 +107,20 @@ CREATE INDEX IF NOT EXISTS conversations_phone ON conversations(business_id, con
 CREATE INDEX IF NOT EXISTS reflections_mistake ON reflections(business_id, mistake, created_at DESC);
 CREATE INDEX IF NOT EXISTS recommendations_engine ON recommendations(business_id, status, generated_by);
 CREATE INDEX IF NOT EXISTS reports_type ON reports(business_id, report_type, report_date DESC);
+
+-- ── Schema reconciliation (fixes drift between setup_supabase.sql and code) ──
+-- ai_costs: code (kpi_engine, cost_optimizer) uses tokens_used in addition to input/output
+ALTER TABLE ai_costs ADD COLUMN IF NOT EXISTS tokens_used INTEGER DEFAULT 0;
+
+-- agent_decisions: setup_supabase.sql created an older shape; code inserts these columns
+ALTER TABLE agent_decisions ADD COLUMN IF NOT EXISTS workflow TEXT;
+ALTER TABLE agent_decisions ADD COLUMN IF NOT EXISTS parameters JSONB DEFAULT '{}';
+ALTER TABLE agent_decisions ADD COLUMN IF NOT EXISTS reason TEXT;
+ALTER TABLE agent_decisions ADD COLUMN IF NOT EXISTS approved_by TEXT DEFAULT 'autonomous';
+ALTER TABLE agent_decisions ADD COLUMN IF NOT EXISTS risk_level TEXT DEFAULT 'low';
+ALTER TABLE agent_decisions ADD COLUMN IF NOT EXISTS decided_at TIMESTAMPTZ DEFAULT NOW();
+
+-- events: bus.publish writes a 'source' field
+ALTER TABLE events ADD COLUMN IF NOT EXISTS source TEXT;
+
+-- recommendations: keep schema authoritative (no metadata column used by code anymore)

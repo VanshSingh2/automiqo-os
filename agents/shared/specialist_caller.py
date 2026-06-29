@@ -49,7 +49,11 @@ SPECIALIST_REGISTRY = {
 
 
 class SpecialistCaller:
-    def __init__(self, library_path: str = "specialist_library"):
+    def __init__(self, library_path: str = None):
+        from pathlib import Path as _P
+        if library_path is None:
+            # Package-relative: <repo>/specialist_library
+            library_path = str(_P(__file__).resolve().parents[2] / "specialist_library")
         self.library_path = Path(library_path)
         self.client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
 

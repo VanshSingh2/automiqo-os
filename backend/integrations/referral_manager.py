@@ -64,7 +64,7 @@ async def redeem_referral(business_id: str, referral_code: str, referred_custome
         business_id=UUID(business_id),
         created_by="referral_manager",
         workflow="send_loyalty_reward",
-        priority=TaskPriority.normal,
+        priority=TaskPriority.NORMAL,
         parameters={"customer_id": r["referrer_id"], "reward_amount": r["reward_amount"],
                     "reason": f"Referral bonus — code {referral_code}"},
     ))

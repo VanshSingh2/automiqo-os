@@ -101,6 +101,7 @@ def score_and_prioritize(leads: list[dict], target_industry: str = "med spa") ->
         s, reasons = score_lead(lead, target_industry)
         lead["score"] = s
         lead["score_reasons"] = ", ".join(reasons)
+        lead["tier"] = "A" if s >= 75 else "B" if s >= 50 else "C"
     leads.sort(key=lambda x: x.get("score", 0), reverse=True)
     return leads
 

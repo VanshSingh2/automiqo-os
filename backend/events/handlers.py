@@ -77,7 +77,6 @@ async def dispatch_action(business_id: str, workflow: str, parameters: dict, rea
             "description": f"{reason}\nWorkflow: {workflow}\nParams: {json.dumps(parameters, default=str)[:500]}",
             "priority": "high",
             "status": "pending",
-            "metadata": {"workflow": workflow, "parameters": parameters},
         }).execute()
     else:
         # Auto-fire via dispatcher
@@ -280,12 +279,13 @@ async def handle_cfo(business_id: str, event_type: str, payload: dict) -> None:
                 .eq("id", payload.get("appointment_id", "")).limit(1).execute().data
             revenue = float((appt[0].get("revenue") or 0)) if appt else 0
             if revenue > 0:
-                sb.table("ai_costs").insert({
+                sb.table("kpi_events").insert({
                     "business_id": business_id,
-                    "event": "appointment_completed",
-                    "revenue": revenue,
-                    "appointment_id": payload.get("appointment_id"),
-                    "logged_at": datetime.now(timezone.utc).isoformat(),
+                    "metric": "appointment_revenue",
+                    "value": revenue,
+                    "department": "cfo",
+                    "metadata": {"appointment_id": payload.get("appointment_id")},
+                    "recorded_at": datetime.now(timezone.utc).isoformat(),
                 }).execute()
         except Exception:
             pass
@@ -335,3 +335,37 @@ async def handle_ceo(business_id: str, event_type: str, payload: dict) -> None:
             "message": f"ALERT: Negative review received. {payload.get('review_text', '')[:200]}",
             "status": "sent",
         }).execute()
+
+    elif event_type in ("internal.ceo_alert", "internal.alert"):
+        # A department escalated something to the CEO (e.g. CFO revenue drop, CTO critical failure)
+        sb = get_supabase()
+        from_dept = payload.get("_from", payload.get("from", "a department"))
+        msg = payload.get("message", "")
+        sb.table("notifications_log").insert({
+            "business_id": business_id,
+            "channel": "internal",
+            "message": f"[{from_dept.upper()} -> CEO] {msg[:300]}",
+            "status": "sent",
+        }).execute()
+        # High-urgency alerts become owner recommendations
+        if payload.get("urgency") == "high":
+            sb.table("recommendations").insert({
+                "business_id": business_id,
+                "generated_by": "ceo",
+                "category": "escalation",
+                "title": f"Escalation from {from_dept.upper()}",
+                "description": msg[:500],
+                "priority": "high",
+                "status": "pending",
+            }).execute()
+
+    elif event_type == "opportunity.detected":
+        # Opportunity engine surfaced a high-value opportunity
+        sb = get_supabase()
+        sb.table("notifications_log").insert({
+            "business_id": business_id,
+            "channel": "internal",
+            "message": f"OPPORTUNITY: {payload.get('title', '')} (est. ${payload.get('potential_value', 0):.0f})",
+            "status": "sent",
+        }).execute()
+

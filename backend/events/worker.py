@@ -33,6 +33,7 @@ async def _handle_internal_alert(business_id: str, event_type: str, payload: dic
         "internal.cto_alert": "cto",
         "internal.csd_alert": "csd",
         "internal.learning_alert": "learning",
+        "internal.ceo_alert": "ceo",
         "internal.alert": "ceo",
     }
     dept = dept_map.get(event_type)

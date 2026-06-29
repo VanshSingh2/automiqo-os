@@ -63,8 +63,13 @@ async def run_enrichment(leads: list[dict], include_social: bool = False) -> lis
 
     if include_social:
         from backend.integrations.social_scrapers import enrich_social_batch
-        top_leads = sorted(all_leads, key=lambda x: x.get("score", 0), reverse=True)[:50]
-        rest_leads = all_leads[50:]
+        from backend.integrations.lead_scorer import score_lead_v2
+        # Score first so the top-50 social selection targets the best-fit leads
+        # (scores are 0 until now, so an unscored sort would be arbitrary)
+        scored = [score_lead_v2(l) for l in all_leads]
+        scored.sort(key=lambda x: x.get("score", 0), reverse=True)
+        top_leads = scored[:50]
+        rest_leads = scored[50:]
         enriched_social = await enrich_social_batch(top_leads, max_concurrent=2, delay_between=2.0)
         all_leads = enriched_social + rest_leads
 
