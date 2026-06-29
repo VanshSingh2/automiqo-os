@@ -6,35 +6,69 @@ from agents.base_agent import BaseAgent
 from shared.schemas import AgentResponse
 from backend.memory.supabase_client import get_supabase
 
+LEAD_GEN_KEYWORDS = [
+    "find leads", "find businesses", "scrape leads", "get leads", "discover leads",
+    "lead gen", "lead generation", "prospect", "find prospects",
+    "find med spas", "find gyms", "find salons", "find dentists", "find spas",
+    "find", "scrape", "discover",
+]
+
+INDUSTRY_MAP = {
+    "medspa": "medspa", "med spa": "medspa", "medical spa": "medspa",
+    "gym": "gym", "fitness": "gym", "yoga": "gym",
+    "salon": "salon", "hair": "salon", "nail": "salon", "barber": "salon",
+    "dental": "dental", "dentist": "dental",
+    "wellness": "wellness", "massage": "wellness", "chiropractic": "wellness",
+}
+
 
 class LeadManager(BaseAgent):
     def __init__(self, business_id: UUID):
         super().__init__(business_id)
         self.llm = self._build_dept_llm()
 
+    def _detect_industry(self, question: str) -> str:
+        q_lower = question.lower()
+        for keyword, industry in INDUSTRY_MAP.items():
+            if keyword in q_lower:
+                return industry
+        return "medspa"
+
+    async def run_lead_pipeline(self, industry: str, locations: list[str] = None,
+                                limit_per_location: int = 20, include_social: bool = False) -> dict:
+        """Run the full Lead Intelligence Pipeline (v2 — Serper + Scrapling + Crawl4AI + Social)."""
+        from backend.integrations.lead_intelligence import run_full_pipeline
+        return await run_full_pipeline(
+            business_id=self.business_id,
+            industry=industry,
+            locations=locations,
+            limit_per_location=limit_per_location,
+            include_social=include_social,
+        )
+
     async def run(self, question: str, context: dict | None = None) -> AgentResponse:
         ctx = context or {}
         bid = str(self.business_id)
         sb = get_supabase()
-
-        # Detect if this is a scrape/pipeline request
         q_lower = question.lower()
-        is_pipeline = any(w in q_lower for w in ["find", "scrape", "discover", "get leads", "lead gen", "prospect"])
 
+        # Detect lead generation intent
+        is_lead_gen = any(w in q_lower for w in LEAD_GEN_KEYWORDS)
         pipeline_result = {}
-        if is_pipeline:
-            from backend.integrations.lead_pipeline import run_pipeline
-            pipeline_result = await run_pipeline(
-                business_id=bid,
-                query=ctx.get("query", ctx.get("industry", "med spa")),
-                location=ctx.get("location", "New Jersey"),
-                industry=ctx.get("industry", "med spa"),
-                count=int(ctx.get("count", 30)),
-                enrich=True,
-                min_score=40,
+
+        if is_lead_gen:
+            industry = ctx.get("industry") or self._detect_industry(question)
+            locations = ctx.get("locations")
+            limit = int(ctx.get("limit_per_location", ctx.get("count", 20)))
+            include_social = ctx.get("include_social", False)
+            pipeline_result = await self.run_lead_pipeline(
+                industry=industry,
+                locations=locations,
+                limit_per_location=limit,
+                include_social=include_social,
             )
 
-        # Get current pipeline stats
+        # Get pipeline stats
         try:
             from backend.integrations.lead_pipeline import get_pipeline_stats
             stats = await get_pipeline_stats(bid)
@@ -53,13 +87,22 @@ class LeadManager(BaseAgent):
         try:
             prompt = self._load_prompt("managers/cmo/lead_manager")
         except Exception:
-            prompt = "You are the Lead Manager. Run discovery, enrichment, scoring and outreach for leads. Respond with JSON: {status, summary, metrics, recommendations}."
+            prompt = "You are the Lead Intelligence Manager. Run discovery, enrichment, scoring and outreach for leads. Respond with JSON: {status, summary, metrics, recommendations}."
 
         messages = [
             SystemMessage(content=self._inject_biz(prompt)),
-            HumanMessage(content=f"Data: {json.dumps(state)}\n\nQuestion: {question}"),
+            HumanMessage(content=f"Data: {json.dumps(state, default=str)}\n\nQuestion: {question}"),
         ]
         response = await self.llm.ainvoke(messages)
         result = self._parse_response(response.content)
         result.metrics = {**state, **result.metrics}
+
+        if pipeline_result.get("pipeline_complete"):
+            seg = pipeline_result.get("segments", {})
+            result.recommendations = [
+                f"Start outreach with {seg.get('tier_a_count', 0)} Tier A leads",
+                f"{seg.get('no_booking_system', 0)} businesses have NO online booking — highest conversion probability",
+                f"Total pipeline: {pipeline_result.get('total_discovered', 0)} found, {pipeline_result.get('total_saved', 0)} saved to CRM",
+            ]
+
         return result

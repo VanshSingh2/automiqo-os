@@ -1,0 +1,99 @@
+{
+  "name": "Run Lead Intelligence Pipeline",
+  "active": true,
+  "nodes": [
+    {
+      "id": "wh-lp-001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "run_lead_pipeline",
+        "responseMode": "responseNode"
+      }
+    },
+    {
+      "id": "ex-lp-001",
+      "name": "Extract Params",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [460, 300],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {"id": "a1", "name": "business_id", "value": "={{ $json.business_id }}", "type": "string"},
+            {"id": "a2", "name": "task_id", "value": "={{ $json.task_id }}", "type": "string"},
+            {"id": "a3", "name": "industry", "value": "={{ $json.parameters.industry || 'medspa' }}", "type": "string"},
+            {"id": "a4", "name": "locations", "value": "={{ $json.parameters.locations || [] }}", "type": "array"},
+            {"id": "a5", "name": "limit", "value": "={{ $json.parameters.limit_per_location || 20 }}", "type": "number"},
+            {"id": "a6", "name": "include_social", "value": "={{ $json.parameters.include_social || false }}", "type": "boolean"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "pipeline-run-001",
+      "name": "Run Pipeline",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/leads/pipeline/run",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {"name": "business_id", "value": "={{ $('Extract Params').item.json.business_id }}"},
+            {"name": "industry", "value": "={{ $('Extract Params').item.json.industry }}"},
+            {"name": "locations", "value": "={{ $('Extract Params').item.json.locations }}"},
+            {"name": "limit_per_location", "value": "={{ $('Extract Params').item.json.limit }}"},
+            {"name": "include_social", "value": "={{ $('Extract Params').item.json.include_social }}"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "update-task-lp",
+      "name": "Update Task",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": {"supabaseApi": {"id": "supabase_main", "name": "Supabase_Main"}},
+      "parameters": {
+        "operation": "update",
+        "tableId": "tasks",
+        "filterType": "manual",
+        "filters": {"conditions": [{"keyName": "id", "keyValue": "={{ $('Extract Params').item.json.task_id }}", "condition": "eq"}]},
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {"fieldId": "status", "fieldValue": "completed"},
+            {"fieldId": "result", "fieldValue": "={{ JSON.stringify($('Run Pipeline').item.json) }}"},
+            {"fieldId": "completed_at", "fieldValue": "={{ new Date().toISOString() }}"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "respond-lp",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Run Pipeline').item.json) }}"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {"main": [[{"node": "Extract Params", "type": "main", "index": 0}]]},
+    "Extract Params": {"main": [[{"node": "Run Pipeline", "type": "main", "index": 0}]]},
+    "Run Pipeline": {"main": [[{"node": "Update Task", "type": "main", "index": 0}]]},
+    "Update Task": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]}
+  },
+  "tags": ["marketing", "leads", "intelligence"]
+}

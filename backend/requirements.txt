@@ -17,4 +17,6 @@ openai>=1.51.0
 pytest>=8.3.0
 pytest-asyncio>=0.24.0
 python-dotenv>=1.0.0
-scrapling>=0.3.0
+scrapling[fetchers]>=0.3.2
+crawl4ai>=0.4.0
+psutil>=6.0.0

@@ -1,0 +1,93 @@
+{
+  "name": "Run QA Pipeline",
+  "active": true,
+  "nodes": [
+    {
+      "id": "wh-qa-001",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "run_qa_pipeline",
+        "responseMode": "responseNode"
+      }
+    },
+    {
+      "id": "ex-qa-001",
+      "name": "Extract Params",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [460, 300],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {"id": "a1", "name": "business_id", "value": "={{ $json.business_id }}", "type": "string"},
+            {"id": "a2", "name": "task_id", "value": "={{ $json.task_id }}", "type": "string"},
+            {"id": "a3", "name": "phase", "value": "={{ $json.parameters.phase || 'all' }}", "type": "string"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "qa-run-001",
+      "name": "Run QA Director",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/qa/run",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {"name": "business_id", "value": "={{ $('Extract Params').item.json.business_id }}"},
+            {"name": "phase", "value": "={{ $('Extract Params').item.json.phase }}"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "update-task-qa",
+      "name": "Update Task Status",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": {"supabaseApi": {"id": "supabase_main", "name": "Supabase_Main"}},
+      "parameters": {
+        "operation": "update",
+        "tableId": "tasks",
+        "filterType": "manual",
+        "filters": {"conditions": [{"keyName": "id", "keyValue": "={{ $('Extract Params').item.json.task_id }}", "condition": "eq"}]},
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {"fieldId": "status", "fieldValue": "completed"},
+            {"fieldId": "result", "fieldValue": "={{ JSON.stringify($('Run QA Director').item.json) }}"},
+            {"fieldId": "completed_at", "fieldValue": "={{ new Date().toISOString() }}"}
+          ]
+        }
+      }
+    },
+    {
+      "id": "respond-qa",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($('Run QA Director').item.json) }}"
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {"main": [[{"node": "Extract Params", "type": "main", "index": 0}]]},
+    "Extract Params": {"main": [[{"node": "Run QA Director", "type": "main", "index": 0}]]},
+    "Run QA Director": {"main": [[{"node": "Update Task Status", "type": "main", "index": 0}]]},
+    "Update Task Status": {"main": [[{"node": "Respond", "type": "main", "index": 0}]]}
+  },
+  "tags": ["qa", "reliability", "platform"]
+}
