@@ -258,6 +258,59 @@ async def handle_learning(business_id: str, event_type: str, payload: dict) -> N
         await dispatch_action(business_id, "score_conversation", payload, "Auto-scoring completed workflow")
 
 
+async def handle_cfo(business_id: str, event_type: str, payload: dict) -> None:
+    from agents.departments.cfo.agent import CFOAgent
+    from backend.events.bus import E
+    from backend.memory.supabase_client import get_supabase
+
+    if event_type == E.PAYMENT_FAILED:
+        # CFO logs the failure and queues recovery
+        await dispatch_action(business_id, "recover_failed_payment", payload,
+                              "CFO auto-flagged failed payment for recovery")
+        # Also update the financial snapshot
+        await dispatch_action(business_id, "generate_revenue_report", {
+            "trigger": "payment_failed", "details": payload,
+        }, "CFO: revenue report triggered by payment failure")
+
+    elif event_type == E.APPT_COMPLETED:
+        # CFO tracks every completed appointment for revenue
+        sb = get_supabase()
+        try:
+            appt = sb.table("appointments").select("revenue,service,staff_id") \
+                .eq("id", payload.get("appointment_id", "")).limit(1).execute().data
+            revenue = float((appt[0].get("revenue") or 0)) if appt else 0
+            if revenue > 0:
+                sb.table("ai_costs").insert({
+                    "business_id": business_id,
+                    "event": "appointment_completed",
+                    "revenue": revenue,
+                    "appointment_id": payload.get("appointment_id"),
+                    "logged_at": datetime.now(timezone.utc).isoformat(),
+                }).execute()
+        except Exception:
+            pass
+
+    elif event_type in ("internal.cfo_alert", "internal.alert") and payload.get("_internal"):
+        # CFO received an internal alert from another dept (e.g. CEO says revenue is off)
+        decision = await _think(CFOAgent, business_id, event_type, {
+            **payload,
+            "instruction": (
+                f"Internal alert from {payload.get('_from','system')}: {payload.get('message','')}. "
+                "Analyse the financial impact and decide what action to take immediately."
+            ),
+        })
+        for action in decision.get("actions", []):
+            await dispatch_action(business_id, action["workflow"],
+                                  action.get("parameters", {}), action.get("reason", ""))
+
+    else:
+        # CFO thinks about any other financial event
+        decision = await _think(CFOAgent, business_id, event_type, payload)
+        for action in decision.get("actions", []):
+            await dispatch_action(business_id, action["workflow"],
+                                  action.get("parameters", {}), action.get("reason", ""))
+
+
 async def handle_ceo(business_id: str, event_type: str, payload: dict) -> None:
     from agents.executive.ceo.agent import CEOAgent
     from backend.events.bus import E

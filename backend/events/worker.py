@@ -8,13 +8,14 @@ from datetime import datetime, timezone, timedelta
 from backend.events.router import get_handlers
 from backend.events.handlers import (
     handle_coo, handle_cro, handle_cmo,
-    handle_csd, handle_cto, handle_learning, handle_ceo,
+    handle_cfo, handle_csd, handle_cto, handle_learning, handle_ceo,
 )
 
 DEPT_HANDLERS = {
     "coo": handle_coo,
     "cro": handle_cro,
     "cmo": handle_cmo,
+    "cfo": handle_cfo,
     "csd": handle_csd,
     "cto": handle_cto,
     "learning": handle_learning,
