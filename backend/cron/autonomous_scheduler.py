@@ -31,7 +31,8 @@ DEPT_SCHEDULE = {
     "learning": (int(os.getenv("DEPT_SCHEDULE_LEARNING", "22")), "backend.autonomous.learning_loop.run_learning_daily_loop"),
 }
 HEARTBEAT_INTERVAL = int(os.getenv("HEARTBEAT_INTERVAL_MINUTES", "60"))
-CEO_STANDUP_HOUR = 7   # CEO morning standup
+URGENT_SCAN_INTERVAL = int(os.getenv("URGENT_SCAN_INTERVAL_MINUTES", "5"))
+CEO_STANDUP_HOUR = 7
 
 
 def _utc_to_est_hour(utc_dt: datetime) -> int:
@@ -119,6 +120,86 @@ async def _ceo_standup_scheduler():
         await asyncio.sleep(23 * 3600)
 
 
+async def _urgent_scanner():
+    """
+    Scans every 5 minutes for the most time-critical signals.
+    These CANNOT wait 60 minutes:
+      - Missed calls (customer hung up, recover within 5 min)
+      - Failed payments (recover before card expires)
+      - Negative reviews posted (respond within minutes)
+      - High-priority task failures (outage-level)
+    """
+    from backend.events.bus import publish, E
+    from backend.memory.supabase_client import get_supabase
+    print(f"[scheduler] Urgent scanner every {URGENT_SCAN_INTERVAL}min")
+
+    while True:
+        await asyncio.sleep(URGENT_SCAN_INTERVAL * 60)
+        businesses = await _get_all_active_businesses()
+
+        for bid in businesses:
+            try:
+                sb = get_supabase()
+                now = datetime.now(timezone.utc)
+                window = (now - timedelta(minutes=URGENT_SCAN_INTERVAL + 1)).isoformat()
+
+                # ── Missed calls in last 5 min ──────────────────────────
+                missed = sb.table("calls").select("id,caller_phone,called_at") \
+                    .eq("business_id", bid).eq("status", "missed") \
+                    .gte("called_at", window).execute().data or []
+                for call in missed:
+                    await publish(bid, E.CALL_MISSED, {
+                        "customer_phone": call.get("caller_phone"),
+                        "call_id": call["id"],
+                        "called_at": call.get("called_at"),
+                        "urgency": "high",
+                    }, source="urgent_scanner")
+
+                # ── New failed payments in last 5 min ───────────────────
+                failed_pay = sb.table("tasks").select("id,parameters,created_at") \
+                    .eq("business_id", bid) \
+                    .in_("workflow", ["recover_failed_payment", "send_payment_link"]) \
+                    .eq("status", "failed").gte("created_at", window).execute().data or []
+                for task in failed_pay:
+                    await publish(bid, E.PAYMENT_FAILED, {
+                        **(task.get("parameters") or {}),
+                        "urgency": "high",
+                    }, source="urgent_scanner")
+
+                # ── Negative calls/reviews in last 5 min ────────────────
+                neg_calls = sb.table("calls").select("id,customer_id,sentiment,summary") \
+                    .eq("business_id", bid).eq("sentiment", "negative") \
+                    .gte("called_at", window).execute().data or []
+                for call in neg_calls:
+                    await publish(bid, E.REVIEW_NEGATIVE, {
+                        "call_id": call["id"],
+                        "customer_id": call.get("customer_id"),
+                        "review_text": call.get("summary", ""),
+                        "source": "call_sentiment",
+                        "urgency": "high",
+                    }, source="urgent_scanner")
+
+                # ── Critical task failures (failed in last 5 min) ───────
+                critical_fails = sb.table("tasks").select("id,workflow,error") \
+                    .eq("business_id", bid).eq("status", "failed") \
+                    .gte("created_at", window).execute().data or []
+                # Only alert CTO if more than 2 failures in this window
+                if len(critical_fails) >= 2:
+                    await publish(bid, E.WORKFLOW_FAILED, {
+                        "count": len(critical_fails),
+                        "workflows": [t["workflow"] for t in critical_fails],
+                        "urgency": "high",
+                    }, source="urgent_scanner")
+
+                if missed or failed_pay or neg_calls or len(critical_fails) >= 2:
+                    print(f"[urgent][{bid[:8]}] missed_calls={len(missed)} "
+                          f"failed_pay={len(failed_pay)} neg_calls={len(neg_calls)} "
+                          f"task_fails={len(critical_fails)}")
+
+            except Exception as e:
+                print(f"[urgent_scanner] Error for {bid[:8]}: {e}")
+
+
 async def _heartbeat_scheduler():
     """Heartbeat every HEARTBEAT_INTERVAL minutes — scans all depts for urgent work."""
     from backend.events.worker import run_hourly_heartbeat
@@ -150,6 +231,9 @@ async def start_autonomous_scheduler():
     # One scheduler per department
     for dept, (hour, fn_path) in DEPT_SCHEDULE.items():
         tasks.append(asyncio.create_task(_dept_scheduler(dept, hour, fn_path)))
+
+    # Urgent scanner (every 5 min for missed calls, failed payments, negative reviews)
+    tasks.append(asyncio.create_task(_urgent_scanner()))
 
     # CEO standup
     tasks.append(asyncio.create_task(_ceo_standup_scheduler()))

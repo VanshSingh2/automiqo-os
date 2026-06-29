@@ -163,6 +163,8 @@ async def run_hourly_heartbeat(business_id: str):
         }, source="heartbeat")
 
     # ── CRO: missed calls in last hour ───────────────────────
+    # NOTE: missed calls are also caught by urgent_scanner every 5 min.
+    # Heartbeat catches any that the urgent scanner or webhook missed.
     hour_ago = (now - timedelta(hours=1)).isoformat()
     missed = sb.table("calls").select("id,caller_phone") \
         .eq("business_id", business_id).eq("status", "missed") \

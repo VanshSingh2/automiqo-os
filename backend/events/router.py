@@ -71,15 +71,29 @@ def get_handlers(event_type: str) -> list[str]:
 
 # Auto-fire whitelist: these actions fire without owner approval
 AUTO_FIRE_ACTIONS = {
+    # Reminders and scheduling
     "send_reminder_24h",
     "send_reminder_2h",
+    # Urgent recovery — these MUST fire instantly, no approval delay
     "recover_missed_call",
+    "recover_failed_payment",
+    # Ops logging
     "log_no_show",
-    "request_google_review",
+    "tag_customer",
+    "update_customer",
+    # Learning
     "score_conversation",
     "generate_reflection",
-    "update_customer",
-    "tag_customer",
+    "store_failure_pattern",
+    "update_agent_confidence",
+    "analyze_call_transcript",
+    # Customer success
+    "request_google_review",
+    "send_satisfaction_survey",
+    # Monitoring
+    "run_regression_tests",
+    "monitor_vps_health",
+    "run_daily_backup",
 }
 
 # Always require approval
