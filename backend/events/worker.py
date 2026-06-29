@@ -193,6 +193,23 @@ async def run_hourly_heartbeat(business_id: str):
     except Exception:
         pass
 
+    # ── Opportunity Engine: surface top opportunities ─────────
+    try:
+        from backend.engines.opportunity_engine import opportunity_engine
+        opps = await opportunity_engine.scan(business_id)
+        if opps:
+            top = opps[0]
+            from backend.events.bus import publish
+            await publish(business_id, "opportunity.detected", {
+                "type": top.get("type"),
+                "title": top.get("title"),
+                "potential_value": top.get("potential_value"),
+                "action": top.get("action"),
+                "priority": top.get("priority"),
+            }, source="heartbeat")
+    except Exception:
+        pass
+
     # ── CSD: churn risk customers ────────────────────────────
     churn = sb.table("customers").select("id,name,phone") \
         .eq("business_id", business_id).contains("tags", ["churn_risk"]) \

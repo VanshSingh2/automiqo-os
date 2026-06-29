@@ -6,17 +6,23 @@ from uuid import UUID
 
 
 async def run_morning_briefing():
+    """7am: Full executive briefing using new engines, then fires standup event."""
+    from backend.engines.executive_briefing import executive_briefing
     sb = get_supabase()
     businesses = sb.table("businesses").select("id,name,timezone").eq("active", True).execute().data or []
 
     for biz in businesses:
         try:
             bid = str(biz["id"])
+            # Generate rich executive briefing (saves to reports table)
+            briefing = await executive_briefing.generate(bid)
+            print(f"[briefing][{bid[:8]}] {briefing.get('headline', 'Done')}")
             # Fire daily standup event — CEO agent handles autonomously
             from backend.events.bus import publish, E
             await publish(bid, E.DAILY_STANDUP, {
                 "business_name": biz.get("name", ""),
                 "timezone": biz.get("timezone", "America/New_York"),
+                "briefing": briefing,
             }, source="morning_cron")
 
             # Also run hourly heartbeat checks

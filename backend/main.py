@@ -19,6 +19,7 @@ from backend.api.leads_api import router as leads_router
 from backend.api.qa_api import router as qa_router
 from backend.api.system_test_api import router as test_router
 from backend.api.growth_api import router as growth_router
+from backend.api.engines_api import router as engines_router
 from backend.api.webhooks import router as webhooks_router
 
 
@@ -69,6 +70,7 @@ app.include_router(leads_router)
 app.include_router(qa_router)
 app.include_router(test_router)
 app.include_router(growth_router)
+app.include_router(engines_router)
 app.include_router(webhooks_router)
 
 
