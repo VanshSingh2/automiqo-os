@@ -1,69 +1,84 @@
 {
   "name": "Enrich Lead Profile",
+  "active": true,
   "nodes": [
     {
-      "id": "1",
+      "id": "wh-el-001",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
       "parameters": {
+        "httpMethod": "POST",
         "path": "enrich_lead_profile",
-        "httpMethod": "POST"
-      },
-      "position": [
-        250,
-        300
-      ]
+        "responseMode": "responseNode"
+      }
     },
     {
-      "id": "2",
+      "id": "validate-el-001",
       "name": "Validate",
       "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
       "parameters": {
-        "jsCode": "// Enrich a lead with additional data: social profiles, employee count, tech stack.\nconst d = $input.first().json;\nif (!d.business_id) throw new Error('Missing business_id');\nreturn [$input.first()];"
-      },
-      "position": [
-        450,
-        300
-      ]
+        "jsCode": "const d = $input.first().json;\nif (!d.business_id) throw new Error('Missing business_id');\nconst p = d.parameters || {};\nreturn [{ json: {\n  business_id: d.business_id,\n  task_id: d.task_id || null,\n  limit: p.limit || 20\n}}];"
+      }
     },
     {
-      "id": "3",
+      "id": "enrich-batch-001",
+      "name": "Enrich Batch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/leads/{{ $json.business_id }}/enrich-batch?limit={{ $json.limit }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        }
+      }
+    },
+    {
+      "id": "update-task-el-001",
+      "name": "Update Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 300],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'completed', result: JSON.stringify($('Enrich Batch').item.json), completed_at: new Date().toISOString() }) }}"
+      }
+    },
+    {
+      "id": "respond-el-001",
       "name": "Respond",
       "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 300],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { status: 'ok', workflow: 'enrich_lead_profile' } }}"
-      },
-      "position": [
-        650,
-        300
-      ]
+        "responseBody": "={{ JSON.stringify({ success: true, workflow: 'enrich_lead_profile', data: $('Enrich Batch').item.json }) }}"
+      }
     }
   ],
   "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Validate",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Webhook": { "main": [[{ "node": "Validate", "type": "main", "index": 0 }]] },
+    "Validate": { "main": [[{ "node": "Enrich Batch", "type": "main", "index": 0 }]] },
+    "Enrich Batch": { "main": [[{ "node": "Update Task", "type": "main", "index": 0 }]] },
+    "Update Task": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
   },
-  "active": false,
-  "settings": {}
+  "settings": { "executionOrder": "v1" },
+  "tags": ["marketing", "leads", "enrichment"]
 }

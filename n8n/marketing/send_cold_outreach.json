@@ -1,69 +1,144 @@
 {
   "name": "Send Cold Outreach",
+  "active": true,
   "nodes": [
     {
-      "id": "1",
+      "id": "wh-co-001",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
       "parameters": {
+        "httpMethod": "POST",
         "path": "send_cold_outreach",
-        "httpMethod": "POST"
-      },
-      "position": [
-        250,
-        300
-      ]
+        "responseMode": "responseNode"
+      }
     },
     {
-      "id": "2",
+      "id": "validate-co-001",
       "name": "Validate",
       "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
       "parameters": {
-        "jsCode": "// Send personalized cold outreach SMS or email to a scored lead.\nconst d = $input.first().json;\nif (!d.business_id) throw new Error('Missing business_id');\nreturn [$input.first()];"
-      },
-      "position": [
-        450,
-        300
-      ]
+        "jsCode": "const d = $input.first().json;\nif (!d.business_id) throw new Error('Missing business_id');\nconst p = d.parameters || {};\nreturn [{ json: {\n  business_id: d.business_id,\n  task_id: d.task_id || null,\n  min_score: p.min_score || 70,\n  tier: p.tier || 'A',\n  limit: p.limit || 10,\n  channel: p.channel || 'sms',\n  message_template: p.message_template || null\n}}];"
+      }
     },
     {
-      "id": "3",
+      "id": "fetch-leads-co-001",
+      "name": "Fetch Top Leads",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/leads?business_id=eq.{{ $json.business_id }}&tier=eq.{{ $json.tier }}&status=eq.new&phone=not.is.null&order=score.desc&limit={{ $json.limit }}&select=id,company_name,phone,email,score,tier,score_reason,booking_platform,city",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "build-messages-co-001",
+      "name": "Build Messages",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "parameters": {
+        "jsCode": "const leads = $input.all().map(i => i.json);\nif (!leads.length) return [{ json: { skipped: true, reason: 'no_leads_found' } }];\nconst template = $('Validate').first().json.message_template;\nreturn leads.map(lead => {\n  const bp = lead.booking_platform;\n  let hook = bp ? `We noticed you're using ${bp} for bookings` : 'We noticed you don\\'t have online booking yet';\n  const msg = template\n    ? template.replace('{name}', lead.company_name).replace('{hook}', hook)\n    : `Hi ${lead.company_name}! ${hook} — Automiqo AI can automate your bookings, reminders & follow-ups. Want to see a free demo? Reply YES or call us. (Score: ${lead.score})`;\n  return { json: { lead_id: lead.id, phone: lead.phone, company_name: lead.company_name, message: msg, score: lead.score } };\n});"
+      }
+    },
+    {
+      "id": "send-sms-co-001",
+      "name": "Send SMS via Twilio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1120, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{ $env.TWILIO_ACCOUNT_SID }}/Messages.json",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "To", "value": "={{ $json.phone }}" },
+            { "name": "From", "value": "={{ $env.TWILIO_PHONE_NUMBER }}" },
+            { "name": "Body", "value": "={{ $json.message }}" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "mark-contacted-co-001",
+      "name": "Mark Lead as Contacted",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1340, 300],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/leads?id=eq.{{ $('Build Messages').item.json.lead_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'contacted', last_contacted: new Date().toISOString() }) }}"
+      }
+    },
+    {
+      "id": "update-task-co-001",
+      "name": "Update Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1560, 300],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'completed', result: JSON.stringify({ sent_count: $('Send SMS via Twilio').all().length }), completed_at: new Date().toISOString() }) }}"
+      }
+    },
+    {
+      "id": "respond-co-001",
       "name": "Respond",
       "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1780, 300],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { status: 'ok', workflow: 'send_cold_outreach' } }}"
-      },
-      "position": [
-        650,
-        300
-      ]
+        "responseBody": "={{ JSON.stringify({ success: true, workflow: 'send_cold_outreach', sent_count: $('Send SMS via Twilio').all().length }) }}"
+      }
     }
   ],
   "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Validate",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Webhook": { "main": [[{ "node": "Validate", "type": "main", "index": 0 }]] },
+    "Validate": { "main": [[{ "node": "Fetch Top Leads", "type": "main", "index": 0 }]] },
+    "Fetch Top Leads": { "main": [[{ "node": "Build Messages", "type": "main", "index": 0 }]] },
+    "Build Messages": { "main": [[{ "node": "Send SMS via Twilio", "type": "main", "index": 0 }]] },
+    "Send SMS via Twilio": { "main": [[{ "node": "Mark Lead as Contacted", "type": "main", "index": 0 }]] },
+    "Mark Lead as Contacted": { "main": [[{ "node": "Update Task", "type": "main", "index": 0 }]] },
+    "Update Task": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
   },
-  "active": false,
-  "settings": {}
+  "settings": { "executionOrder": "v1" },
+  "tags": ["marketing", "leads", "outreach", "sms"]
 }

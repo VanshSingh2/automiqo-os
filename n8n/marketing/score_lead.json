@@ -1,92 +1,122 @@
 {
   "name": "Score Lead",
+  "active": true,
   "nodes": [
     {
-      "id": "1",
+      "id": "wh-sl-001",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
       "parameters": {
+        "httpMethod": "POST",
         "path": "score_lead",
-        "httpMethod": "POST"
-      },
-      "position": [
-        250,
-        300
-      ]
+        "responseMode": "responseNode"
+      }
     },
     {
-      "id": "2",
+      "id": "validate-sl-001",
       "name": "Validate",
       "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
       "parameters": {
-        "jsCode": "// Score a lead 0-100 based on: has website, review count, has booking system, industry fit.\nconst d = $input.first().json;\nif (!d.business_id) throw new Error('Missing business_id');\nreturn [$input.first()];"
-      },
-      "position": [
-        450,
-        300
-      ]
+        "jsCode": "const d = $input.first().json;\nif (!d.business_id) throw new Error('Missing business_id');\nconst p = d.parameters || {};\nreturn [{ json: {\n  business_id: d.business_id,\n  task_id: d.task_id || null,\n  lead_id: p.lead_id || null\n}}];"
+      }
     },
     {
-      "id": "3",
+      "id": "fetch-lead-sl-001",
+      "name": "Fetch Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 300],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/leads?id=eq.{{ $json.lead_id }}&business_id=eq.{{ $json.business_id }}&select=*",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "calc-score-sl-001",
       "name": "Calculate Score",
       "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300],
       "parameters": {
-        "jsCode": "\nconst lead = $input.first().json;\nlet score = 0;\nif (lead.has_website) score += 20;\nif (lead.review_count > 10) score += 15;\nif (lead.review_count > 50) score += 10;\nif (!lead.has_booking_system) score += 25; // opportunity!\nif (lead.google_rating >= 4.0) score += 15;\nif (lead.phone) score += 10;\nif (lead.email) score += 5;\nreturn [{ json: { ...lead, score, scored: true } }];\n"
-      },
-      "position": [
-        650,
-        300
-      ]
+        "jsCode": "// Mirrors score_lead_v2() from backend/integrations/lead_scorer.py\nconst lead = Array.isArray($input.first().json) ? $input.first().json[0] : $input.first().json;\nif (!lead || !lead.id) return [{ json: { skipped: true, reason: 'lead_not_found' } }];\nlet score = 0;\nconst reasons = [];\nconst BASIC = ['calendly','squarespace','wix','square'];\nconst ADVANCED = ['mindbody','vagaro','fresha','jane_app','boulevard','zenoti'];\nif (!lead.has_website && !lead.website) { score += 20; reasons.push('no website'); }\nif (!lead.has_booking_system && !lead.has_online_booking) { score += 25; reasons.push('no online booking'); }\nif (!lead.has_chatbot) { score += 15; reasons.push('no AI/chatbot'); }\nconst rc = lead.review_count || 0;\nif (rc < 50) { score += 15; reasons.push('only ' + rc + ' reviews'); }\nconst rating = lead.google_rating || 0;\nif (rating > 0 && rating < 4.0) { score += 10; reasons.push(rating + '★ rating'); }\nif (lead.email || lead.instagram_email) { score += 10; reasons.push('has email'); }\nif (lead.phone) { score += 5; reasons.push('has phone'); }\nconst bp = lead.booking_platform || '';\nif (BASIC.includes(bp)) { score += 15; reasons.push('uses ' + bp + ' (easy upgrade)'); }\nelse if (ADVANCED.includes(bp)) { score -= 10; reasons.push('uses ' + bp + ' (harder sell)'); }\nif (!lead.instagram_username && !lead.instagram) { score += 10; reasons.push('no Instagram'); }\nelse if ((lead.instagram_followers || 0) < 500) { score += 8; reasons.push('low Instagram followers'); }\nif (lead.instagram_email) { score += 8; reasons.push('email in Instagram bio'); }\nif (!lead.facebook_page_name) { score += 5; reasons.push('no Facebook page'); }\nif (!lead.linkedin_company_url) { score += 5; reasons.push('no LinkedIn'); }\nscore = Math.min(score, 100);\nconst tier = score >= 75 ? 'A' : score >= 50 ? 'B' : 'C';\nreturn [{ json: { lead_id: lead.id, score, tier, score_reason: reasons.join(', ') } }];"
+      }
     },
     {
-      "id": "4",
+      "id": "write-score-sl-001",
+      "name": "Write Score to Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1120, 300],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/leads?id=eq.{{ $json.lead_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ score: $json.score, tier: $json.tier, notes: $json.score_reason }) }}"
+      }
+    },
+    {
+      "id": "update-task-sl-001",
+      "name": "Update Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1340, 300],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'completed', result: JSON.stringify($('Calculate Score').item.json), completed_at: new Date().toISOString() }) }}"
+      }
+    },
+    {
+      "id": "respond-sl-001",
       "name": "Respond",
       "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1560, 300],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { status: 'ok', workflow: 'score_lead' } }}"
-      },
-      "position": [
-        850,
-        300
-      ]
+        "responseBody": "={{ JSON.stringify({ success: true, workflow: 'score_lead', data: $('Calculate Score').item.json }) }}"
+      }
     }
   ],
   "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Validate",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate": {
-      "main": [
-        [
-          {
-            "node": "Calculate Score",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Calculate Score": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Webhook": { "main": [[{ "node": "Validate", "type": "main", "index": 0 }]] },
+    "Validate": { "main": [[{ "node": "Fetch Lead", "type": "main", "index": 0 }]] },
+    "Fetch Lead": { "main": [[{ "node": "Calculate Score", "type": "main", "index": 0 }]] },
+    "Calculate Score": { "main": [[{ "node": "Write Score to Supabase", "type": "main", "index": 0 }]] },
+    "Write Score to Supabase": { "main": [[{ "node": "Update Task", "type": "main", "index": 0 }]] },
+    "Update Task": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
   },
-  "active": false,
-  "settings": {}
+  "settings": { "executionOrder": "v1" },
+  "tags": ["marketing", "leads", "scoring"]
 }

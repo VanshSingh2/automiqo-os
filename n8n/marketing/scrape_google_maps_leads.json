@@ -1,190 +1,87 @@
 {
   "name": "Scrape Google Maps Leads",
+  "active": true,
   "nodes": [
     {
-      "id": "1",
+      "id": "wh-gm-001",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
       "parameters": {
+        "httpMethod": "POST",
         "path": "scrape_google_maps_leads",
-        "httpMethod": "POST"
-      },
-      "position": [
-        250,
-        300
-      ]
+        "responseMode": "responseNode"
+      }
     },
     {
-      "id": "2",
+      "id": "validate-gm-001",
       "name": "Validate",
       "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
       "parameters": {
-        "jsCode": "// Search Google Maps via Serper.dev for businesses matching query+location. Store results in Supabase leads table.\nconst d = $input.first().json;\nif (!d.business_id) throw new Error('Missing business_id');\nreturn [$input.first()];"
-      },
-      "position": [
-        450,
-        300
-      ]
+        "jsCode": "const d = $input.first().json;\nif (!d.business_id) throw new Error('Missing business_id');\nconst p = d.parameters || {};\nreturn [{ json: {\n  business_id: d.business_id,\n  task_id: d.task_id || null,\n  industry: p.industry || p.query || 'medspa',\n  locations: p.locations || [],\n  limit_per_location: p.limit_per_location || p.count || 20,\n  skip_enrichment: p.skip_enrichment || false,\n  include_social: p.include_social || false\n}}];"
+      }
     },
     {
-      "id": "3",
-      "name": "Serper Search",
+      "id": "run-pipeline-001",
+      "name": "Run Lead Pipeline",
       "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 300],
       "parameters": {
-        "url": "https://google.serper.dev/maps",
         "method": "POST",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
+        "url": "={{ $env.BACKEND_URL }}/leads/pipeline/run",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "q",
-              "value": "={{ $json.parameters.query + ' ' + $json.parameters.location }}"
-            },
-            {
-              "name": "num",
-              "value": "={{ $json.parameters.count || 20 }}"
-            }
-          ]
-        }
-      },
-      "position": [
-        650,
-        300
-      ]
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ business_id: $json.business_id, industry: $json.industry, locations: $json.locations, limit_per_location: $json.limit_per_location, skip_enrichment: $json.skip_enrichment, include_social: $json.include_social }) }}"
+      }
     },
     {
-      "id": "4",
-      "name": "Store in Supabase",
+      "id": "update-task-gm-001",
+      "name": "Update Task",
       "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 300],
       "parameters": {
-        "url": "={{ $env.SUPABASE_URL }}/rest/v1/leads",
-        "method": "POST",
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "apikey",
-              "value": "={{ $env.SUPABASE_SERVICE_KEY }}"
-            },
-            {
-              "name": "Authorization",
-              "value": "Bearer {{ $env.SUPABASE_SERVICE_KEY }}"
-            },
-            {
-              "name": "Prefer",
-              "value": "resolution=ignore-duplicates"
-            }
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
           ]
         },
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "business_id",
-              "value": "={{ $('Webhook').first().json.business_id }}"
-            },
-            {
-              "name": "company_name",
-              "value": "={{ $json.title }}"
-            },
-            {
-              "name": "address",
-              "value": "={{ $json.address }}"
-            },
-            {
-              "name": "phone",
-              "value": "={{ $json.phoneNumber }}"
-            },
-            {
-              "name": "website",
-              "value": "={{ $json.website }}"
-            },
-            {
-              "name": "google_rating",
-              "value": "={{ $json.rating }}"
-            },
-            {
-              "name": "review_count",
-              "value": "={{ $json.reviews }}"
-            },
-            {
-              "name": "source",
-              "value": "google_maps"
-            },
-            {
-              "name": "status",
-              "value": "new"
-            }
-          ]
-        }
-      },
-      "position": [
-        850,
-        300
-      ]
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'completed', result: JSON.stringify($('Run Lead Pipeline').item.json), completed_at: new Date().toISOString() }) }}"
+      }
     },
     {
-      "id": "5",
+      "id": "respond-gm-001",
       "name": "Respond",
       "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 300],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { status: 'ok', workflow: 'scrape_google_maps_leads' } }}"
-      },
-      "position": [
-        1050,
-        300
-      ]
+        "responseBody": "={{ JSON.stringify({ success: true, workflow: 'scrape_google_maps_leads', data: $('Run Lead Pipeline').item.json }) }}"
+      }
     }
   ],
   "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Validate",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate": {
-      "main": [
-        [
-          {
-            "node": "Serper Search",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Serper Search": {
-      "main": [
-        [
-          {
-            "node": "Store in Supabase",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Store in Supabase": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Webhook": { "main": [[{ "node": "Validate", "type": "main", "index": 0 }]] },
+    "Validate": { "main": [[{ "node": "Run Lead Pipeline", "type": "main", "index": 0 }]] },
+    "Run Lead Pipeline": { "main": [[{ "node": "Update Task", "type": "main", "index": 0 }]] },
+    "Update Task": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
   },
-  "active": false,
-  "settings": {}
+  "settings": { "executionOrder": "v1" },
+  "tags": ["marketing", "leads", "scraping"]
 }

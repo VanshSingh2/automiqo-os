@@ -1,69 +1,87 @@
 {
   "name": "Scrape Website Email",
+  "active": true,
   "nodes": [
     {
-      "id": "1",
+      "id": "wh-we-001",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
       "parameters": {
+        "httpMethod": "POST",
         "path": "scrape_website_email",
-        "httpMethod": "POST"
-      },
-      "position": [
-        250,
-        300
-      ]
+        "responseMode": "responseNode"
+      }
     },
     {
-      "id": "2",
+      "id": "validate-we-001",
       "name": "Validate",
       "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300],
       "parameters": {
-        "jsCode": "// Visit lead website homepage and contact page, extract email addresses.\nconst d = $input.first().json;\nif (!d.business_id) throw new Error('Missing business_id');\nreturn [$input.first()];"
-      },
-      "position": [
-        450,
-        300
-      ]
+        "jsCode": "const d = $input.first().json;\nif (!d.business_id) throw new Error('Missing business_id');\nconst p = d.parameters || {};\nif (!p.lead_id && !p.website_url) throw new Error('Missing lead_id or website_url');\nreturn [{ json: {\n  business_id: d.business_id,\n  task_id: d.task_id || null,\n  lead_id: p.lead_id,\n  website_url: p.website_url\n}}];"
+      }
     },
     {
-      "id": "3",
+      "id": "enrich-one-001",
+      "name": "Enrich Lead Website",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [680, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/leads/enrich-one",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ lead_id: $json.lead_id, website_url: $json.website_url }) }}"
+      }
+    },
+    {
+      "id": "update-task-we-001",
+      "name": "Update Task",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [900, 300],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status: 'completed', result: JSON.stringify($('Enrich Lead Website').item.json), completed_at: new Date().toISOString() }) }}"
+      }
+    },
+    {
+      "id": "respond-we-001",
       "name": "Respond",
       "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 300],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { status: 'ok', workflow: 'scrape_website_email' } }}"
-      },
-      "position": [
-        650,
-        300
-      ]
+        "responseBody": "={{ JSON.stringify({ success: true, workflow: 'scrape_website_email', data: $('Enrich Lead Website').item.json }) }}"
+      }
     }
   ],
   "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "Validate",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Validate": {
-      "main": [
-        [
-          {
-            "node": "Respond",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Webhook": { "main": [[{ "node": "Validate", "type": "main", "index": 0 }]] },
+    "Validate": { "main": [[{ "node": "Enrich Lead Website", "type": "main", "index": 0 }]] },
+    "Enrich Lead Website": { "main": [[{ "node": "Update Task", "type": "main", "index": 0 }]] },
+    "Update Task": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
   },
-  "active": false,
-  "settings": {}
+  "settings": { "executionOrder": "v1" },
+  "tags": ["marketing", "leads", "enrichment"]
 }
