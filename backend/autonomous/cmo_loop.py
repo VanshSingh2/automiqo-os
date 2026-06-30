@@ -102,9 +102,12 @@ async def run_cmo_daily_loop(business_id: str) -> dict:
             "contacted_this_week": len(contacted_7d),
             "actions_auto_taken": actions_taken,
         }
+        from backend.autonomous.work_memory import recall_block
+        _mem = await recall_block(bid, "CMO", "marketing leads campaigns content conversion")
         resp = await agent.run(
             "Daily marketing review: what are the top 3 marketing actions I should take today "
-            "to grow the pipeline and improve conversion? Be specific with workflow names.",
+            "to grow the pipeline and improve conversion? Be specific with workflow names. "
+            "Reference what you remember from prior days where relevant." + _mem,
             context=context,
         )
         for rec in (resp.recommendations or [])[:3]:

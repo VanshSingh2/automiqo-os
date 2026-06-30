@@ -123,9 +123,12 @@ async def run_learning_daily_loop(business_id: str) -> dict:
             "reflections_today": len(reflections),
             "running_experiments": len(running_experiments),
         }
+        from backend.autonomous.work_memory import recall_block
+        _mem = await recall_block(bid, "Learning Lead", "patterns lessons mistakes improvements experiments")
         resp = await agent.run(
             "Nightly learning review: analyze today's patterns, identify what the AI team "
-            "did well and what needs improvement. Generate 3 specific prompt or workflow improvements.",
+            "did well and what needs improvement. Generate 3 specific prompt or workflow improvements. "
+            "Reference what you remember from prior days where relevant." + _mem,
             context=context,
         )
         for rec in (resp.recommendations or [])[:5]:

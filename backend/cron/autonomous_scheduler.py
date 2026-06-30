@@ -95,6 +95,17 @@ async def _run_dept_loop(dept: str, fn_path: str, business_id: str):
             await post_team_message(business_id, dept, msg, category="standup")
         except Exception:
             pass
+        # Remember what happened today so the team has shared context tomorrow.
+        try:
+            from backend.autonomous.work_memory import remember_summary
+            details = result.get("details") or []
+            detail_str = ("; ".join(str(d) for d in details[:8])) if details else "no notable actions"
+            await remember_summary(
+                business_id, dept.upper(),
+                f"Daily loop: {actions} actions, {queued} queued for approval. {detail_str}",
+            )
+        except Exception:
+            pass
     except Exception as e:
         print(f"[scheduler][{dept.upper()}] Error: {e}")
 

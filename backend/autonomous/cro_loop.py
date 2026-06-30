@@ -118,9 +118,12 @@ async def run_cro_daily_loop(business_id: str) -> dict:
             "upsells_queued": len([a for a in approvals_queued if "upsell" in a]),
             "missed_calls_recovered": len([a for a in actions_taken if "missed" in a]),
         }
+        from backend.autonomous.work_memory import recall_block
+        _mem = await recall_block(bid, "CRO", "revenue dormant upsell membership missed calls payments")
         resp = await agent.run(
             "Daily revenue review: what are the top revenue opportunities right now? "
-            "What should I prioritize to hit our monthly revenue goal?",
+            "What should I prioritize to hit our monthly revenue goal? "
+            "Reference what you remember from prior days where relevant." + _mem,
             context=context,
         )
         for rec in (resp.recommendations or [])[:3]:

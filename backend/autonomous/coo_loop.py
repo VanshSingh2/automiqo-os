@@ -122,9 +122,12 @@ async def run_coo_daily_loop(business_id: str) -> dict:
             "active_staff": len(staff),
             "actions_auto_taken": actions_taken,
         }
+        from backend.autonomous.work_memory import recall_block
+        _mem = await recall_block(bid, "COO", "operations appointments staff inventory no-shows")
         resp = await agent.run(
             "Daily autonomous review: based on today's data, what else needs attention right now? "
-            "List specific actions with workflow names and parameters.",
+            "List specific actions with workflow names and parameters. "
+            "Reference what you remember from prior days where relevant." + _mem,
             context=context,
         )
         # Parse and dispatch any additional recommendations

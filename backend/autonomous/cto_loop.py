@@ -103,9 +103,12 @@ async def run_cto_daily_loop(business_id: str) -> dict:
             "failure_rate_pct": round(failure_rate * 100, 1),
             "failed_workflows": failed_workflows,
         }
+        from backend.autonomous.work_memory import recall_block
+        _mem = await recall_block(bid, "CTO", "platform reliability deployments failures backups health")
         resp = await agent.run(
             "Daily platform review: analyze system health, identify reliability risks, "
-            "and decide what engineering improvements to prioritize today.",
+            "and decide what engineering improvements to prioritize today. "
+            "Reference what you remember from prior days where relevant." + _mem,
             context=context,
         )
         for rec in (resp.recommendations or [])[:3]:

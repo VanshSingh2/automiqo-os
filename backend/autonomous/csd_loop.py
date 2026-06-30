@@ -128,9 +128,12 @@ async def run_csd_daily_loop(business_id: str) -> dict:
             "surveys_queued": len([a for a in actions_taken if "survey" in a]),
             "vip_rewards_queued": len([a for a in approvals_queued if "loyalty" in a]),
         }
+        from backend.autonomous.work_memory import recall_block
+        _mem = await recall_block(bid, "CSD", "customer satisfaction churn complaints reviews loyalty")
         resp = await agent.run(
             "Daily customer success review: what is the health of our customer relationships today? "
-            "What should I do to improve satisfaction and prevent churn?",
+            "What should I do to improve satisfaction and prevent churn? "
+            "Reference what you remember from prior days where relevant." + _mem,
             context=context,
         )
         for rec in (resp.recommendations or [])[:3]:

@@ -107,9 +107,12 @@ async def run_cfo_daily_loop(business_id: str) -> dict:
     # ── 7. CFO AGENT STRATEGIC REVIEW ────────────────────────
     try:
         agent = CFOAgent(UUID(bid))
+        from backend.autonomous.work_memory import recall_block
+        _mem = await recall_block(bid, "CFO", "revenue costs forecast budget financial risk")
         resp = await agent.run(
             "Daily financial review: analyze revenue trends, cost anomalies, and forecast risk. "
-            "What financial decisions should I flag for the owner today?",
+            "What financial decisions should I flag for the owner today? "
+            "Reference what you remember from prior days where relevant." + _mem,
             context=snapshot,
         )
         for rec in (resp.recommendations or [])[:3]:

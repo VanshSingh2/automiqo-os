@@ -30,10 +30,13 @@ async def lifespan(app: FastAPI):
     from backend.dispatcher.queue import worker_loop
     from backend.events.worker import event_worker_loop
     from backend.cron.autonomous_scheduler import start_autonomous_scheduler
+    from backend.cron.manager_scheduler import start_manager_schedulers
 
     task_worker = asyncio.create_task(worker_loop())
     event_worker = asyncio.create_task(event_worker_loop())
     scheduler_tasks = await start_autonomous_scheduler()
+    manager_tasks = await start_manager_schedulers()
+    scheduler_tasks = list(scheduler_tasks) + list(manager_tasks)
 
     print(f"✅ Task worker + Event worker + {len(scheduler_tasks)} scheduler tasks started")
     yield
