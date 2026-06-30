@@ -23,6 +23,17 @@ async def run_learning_daily_loop(business_id: str) -> dict:
     today_start = now.replace(hour=0, minute=0, second=0).isoformat()
     week_ago = (now - timedelta(days=7)).isoformat()
 
+    # Only run managers this business has enabled.
+    from backend.engines.business_blueprint import is_manager_enabled
+    try:
+        _biz = sb.table("businesses").select("config").eq("id", bid).limit(1).execute().data
+        config = (_biz[0].get("config") if _biz else {}) or {}
+    except Exception:
+        config = {}
+    reflection_on = is_manager_enabled(config, "learning", "reflection")
+    knowledge_on = is_manager_enabled(config, "learning", "knowledge")
+    innovation_on = is_manager_enabled(config, "learning", "innovation")
+
     actions_taken = []
     approvals_queued = []
 
@@ -30,7 +41,7 @@ async def run_learning_daily_loop(business_id: str) -> dict:
     calls = sb.table("calls").select("id,transcript,summary,outcome,sentiment")\
         .eq("business_id", bid).gte("called_at", today_start)\
         .not_.is_("transcript", "null").execute().data or []
-    for call in calls[:10]:
+    for call in (calls[:10] if reflection_on else []):
         if call.get("transcript"):
             await dispatch_action(bid, "analyze_call_transcript", {
                 "call_id": call["id"],
@@ -44,7 +55,7 @@ async def run_learning_daily_loop(business_id: str) -> dict:
     failed_tasks = sb.table("tasks").select("workflow,error,parameters")\
         .eq("business_id", bid).eq("status", "failed")\
         .gte("created_at", today_start).execute().data or []
-    if failed_tasks:
+    if knowledge_on and failed_tasks:
         await dispatch_action(bid, "detect_knowledge_gap", {
             "failed_workflows": [t["workflow"] for t in failed_tasks],
             "errors": [t.get("error", "") for t in failed_tasks if t.get("error")][:5],
@@ -53,7 +64,7 @@ async def run_learning_daily_loop(business_id: str) -> dict:
 
     # ── 3. FAILURE PATTERN STORAGE ───────────────────────────
     errors = [t.get("error", "") for t in failed_tasks if t.get("error")]
-    if errors:
+    if reflection_on and errors:
         await dispatch_action(bid, "store_failure_pattern", {
             "patterns": errors[:5],
             "workflows": [t["workflow"] for t in failed_tasks],
@@ -63,7 +74,7 @@ async def run_learning_daily_loop(business_id: str) -> dict:
     # ── 4. SCORE AGENT CONVERSATIONS ─────────────────────────
     reflections = sb.table("reflections").select("id,what_happened,lesson,confidence")\
         .eq("business_id", bid).gte("created_at", today_start).execute().data or []
-    if reflections:
+    if reflection_on and reflections:
         await dispatch_action(bid, "score_conversation", {
             "reflection_count": len(reflections),
             "date": now.strftime("%Y-%m-%d"),
@@ -84,7 +95,7 @@ async def run_learning_daily_loop(business_id: str) -> dict:
     # ── 6. A/B EXPERIMENT ANALYSIS ───────────────────────────
     running_experiments = sb.table("experiments").select("id,name,metric,started_at")\
         .eq("business_id", bid).eq("status", "running").execute().data or []
-    for exp in running_experiments:
+    for exp in (running_experiments if innovation_on else []):
         started = exp.get("started_at", "")
         # If running for more than 7 days, declare winner
         if started and started < week_ago:

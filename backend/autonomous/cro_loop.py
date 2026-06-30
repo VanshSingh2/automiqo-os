@@ -22,6 +22,17 @@ async def run_cro_daily_loop(business_id: str) -> dict:
     renewal_window = (now + timedelta(days=7)).isoformat()
     yesterday = (now - timedelta(days=1)).isoformat()
 
+    # Only run managers this business has enabled.
+    from backend.engines.business_blueprint import is_manager_enabled
+    try:
+        _biz = sb.table("businesses").select("config").eq("id", bid).limit(1).execute().data
+        config = (_biz[0].get("config") if _biz else {}) or {}
+    except Exception:
+        config = {}
+    recovery_on = is_manager_enabled(config, "cro", "revenue_recovery")
+    membership_on = is_manager_enabled(config, "cro", "membership")
+    upsell_on = is_manager_enabled(config, "cro", "upsell")
+
     actions_taken = []
     approvals_queued = []
 
@@ -30,7 +41,7 @@ async def run_cro_daily_loop(business_id: str) -> dict:
         .eq("business_id", bid).eq("opt_out_sms", False)\
         .lt("last_visit", dormant_cutoff).limit(20).execute().data or []
 
-    for customer in dormant[:5]:  # max 5 reactivations queued per day
+    for customer in (dormant[:5] if recovery_on else []):  # max 5 reactivations queued per day
         await dispatch_action(bid, "reactivate_dormant_member", {
             "customer_id": customer["id"],
             "customer_name": customer.get("name", ""),
@@ -55,7 +66,7 @@ async def run_cro_daily_loop(business_id: str) -> dict:
         .eq("business_id", bid).contains("tags", ["membership_active"]).execute().data or []
     # Flag potential renewals (simplified — real impl would check membership_expiry column)
     renewal_candidates = [c for c in expiring if c.get("phone")][:5]
-    for c in renewal_candidates[:3]:
+    for c in (renewal_candidates[:3] if membership_on else []):
         await dispatch_action(bid, "send_renewal_reminder", {
             "customer_id": c["id"],
             "customer_name": c.get("name", ""),
@@ -67,7 +78,7 @@ async def run_cro_daily_loop(business_id: str) -> dict:
     failed_payments = sb.table("tasks").select("id,parameters,created_at")\
         .eq("business_id", bid).eq("workflow", "recover_failed_payment")\
         .eq("status", "failed").gte("created_at", yesterday).execute().data or []
-    for task in failed_payments[:3]:
+    for task in (failed_payments[:3] if recovery_on else []):
         await dispatch_action(bid, "recover_failed_payment",
             task.get("parameters", {}),
             "CRO daily loop: retry failed payment recovery")
@@ -77,7 +88,7 @@ async def run_cro_daily_loop(business_id: str) -> dict:
     recent_completed = sb.table("appointments").select("id,customer_id,service,scheduled_at")\
         .eq("business_id", bid).eq("status", "completed")\
         .gte("scheduled_at", yesterday).execute().data or []
-    for appt in recent_completed[:5]:
+    for appt in (recent_completed[:5] if upsell_on else []):
         await dispatch_action(bid, "send_upsell_offer", {
             "customer_id": appt.get("customer_id"),
             "appointment_id": appt["id"],
@@ -90,7 +101,7 @@ async def run_cro_daily_loop(business_id: str) -> dict:
     missed_calls = sb.table("calls").select("id,caller_phone,called_at")\
         .eq("business_id", bid).eq("status", "missed")\
         .gte("called_at", yesterday).execute().data or []
-    for call in missed_calls:
+    for call in (missed_calls if recovery_on else []):
         await dispatch_action(bid, "recover_missed_call", {
             "customer_phone": call.get("caller_phone"),
             "call_id": call["id"],

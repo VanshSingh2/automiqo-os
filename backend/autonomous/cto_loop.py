@@ -22,6 +22,17 @@ async def run_cto_daily_loop(business_id: str) -> dict:
     since_24h = (now - timedelta(hours=24)).isoformat()
     since_7d = (now - timedelta(days=7)).isoformat()
 
+    # Only run managers this business has enabled.
+    from backend.engines.business_blueprint import is_manager_enabled
+    try:
+        _biz = sb.table("businesses").select("config").eq("id", bid).limit(1).execute().data
+        config = (_biz[0].get("config") if _biz else {}) or {}
+    except Exception:
+        config = {}
+    engineering_on = is_manager_enabled(config, "cto", "engineering")
+    qa_on = is_manager_enabled(config, "cto", "qa")
+    devops_on = is_manager_enabled(config, "cto", "devops")
+
     actions_taken = []
     approvals_queued = []
 
@@ -35,7 +46,7 @@ async def run_cto_daily_loop(business_id: str) -> dict:
     failure_rate = len(failed) / max(len(total_tasks), 1)
     failed_workflows = list({t["workflow"] for t in failed})
 
-    for task in failed[:5]:
+    for task in (failed[:5] if engineering_on else []):
         retries = task.get("retries", 0) or 0
         if retries < 3:
             await dispatch_action(bid, task["workflow"],
@@ -44,7 +55,7 @@ async def run_cto_daily_loop(business_id: str) -> dict:
             actions_taken.append(f"retry queued: {task['workflow']}")
 
     # ── 2. REGRESSION DETECTION ──────────────────────────────
-    if failure_rate > 0.20:
+    if qa_on and failure_rate > 0.20:
         await dispatch_action(bid, "run_regression_tests", {
             "failure_rate": round(failure_rate * 100, 1),
             "failed_workflows": failed_workflows,
@@ -60,26 +71,28 @@ async def run_cto_daily_loop(business_id: str) -> dict:
         actions_taken.append("CEO alerted: high failure rate")
 
     # ── 3. QA HEALTH CHECK ───────────────────────────────────
-    await dispatch_action(bid, "run_regression_tests", {
-        "scope": "smoke_test", "trigger": "daily_health_check"
-    }, "CTO daily loop: daily smoke test")
-    actions_taken.append("daily smoke test queued")
+    if qa_on:
+        await dispatch_action(bid, "run_regression_tests", {
+            "scope": "smoke_test", "trigger": "daily_health_check"
+        }, "CTO daily loop: daily smoke test")
+        actions_taken.append("daily smoke test queued")
 
     # ── 4. BACKUP ────────────────────────────────────────────
     last_backup = sb.table("tasks").select("created_at").eq("business_id", bid)\
         .eq("workflow", "run_daily_backup").eq("status", "completed")\
         .gte("created_at", since_24h).execute().data or []
-    if not last_backup:
+    if devops_on and not last_backup:
         await dispatch_action(bid, "run_daily_backup", {
             "timestamp": now.isoformat()
         }, "CTO daily loop: scheduled daily backup")
         actions_taken.append("daily backup queued")
 
     # ── 5. MONITOR VPS HEALTH ────────────────────────────────
-    await dispatch_action(bid, "monitor_vps_health", {
-        "trigger": "daily_check"
-    }, "CTO daily loop: VPS health check")
-    actions_taken.append("VPS health check queued")
+    if devops_on:
+        await dispatch_action(bid, "monitor_vps_health", {
+            "trigger": "daily_check"
+        }, "CTO daily loop: VPS health check")
+        actions_taken.append("VPS health check queued")
 
     # ── 6. CTO AGENT STRATEGIC REVIEW ────────────────────────
     try:

@@ -25,6 +25,17 @@ async def run_cfo_daily_loop(business_id: str) -> dict:
     month_start = now.replace(day=1, hour=0, minute=0, second=0).isoformat()
     week_ago = (now - timedelta(days=7)).isoformat()
 
+    # Only run managers this business has enabled.
+    from backend.engines.business_blueprint import is_manager_enabled
+    try:
+        _biz = sb.table("businesses").select("config").eq("id", bid).limit(1).execute().data
+        config = (_biz[0].get("config") if _biz else {}) or {}
+    except Exception:
+        config = {}
+    analytics_on = is_manager_enabled(config, "cfo", "analytics")
+    planner_on = is_manager_enabled(config, "cfo", "business_planner")
+    risk_on = is_manager_enabled(config, "cfo", "risk")
+
     actions_taken = []
     approvals_queued = []
 
@@ -57,7 +68,7 @@ async def run_cfo_daily_loop(business_id: str) -> dict:
     total_ai_cost_7d = sum(float(c.get("cost_usd") or 0) for c in ai_costs_7d)
 
     # Flag if AI costs > $5/week
-    if total_ai_cost_7d > 5.0:
+    if analytics_on and total_ai_cost_7d > 5.0:
         await dispatch_action(bid, "generate_cost_report", {
             "period": "7d", "total_ai_cost": total_ai_cost_7d,
             "alert": f"AI spend ${total_ai_cost_7d:.2f} this week",
@@ -67,7 +78,7 @@ async def run_cfo_daily_loop(business_id: str) -> dict:
     # ── 5. PENDING PURCHASE ORDERS ───────────────────────────
     pending_pos = sb.table("purchase_orders").select("id,total_amount,status")\
         .eq("business_id", bid).eq("status", "draft").execute().data or []
-    for po in pending_pos[:3]:
+    for po in (pending_pos[:3] if planner_on else []):
         await dispatch_action(bid, "create_purchase_order", {
             "purchase_order_id": po["id"],
             "action": "review_and_send",
@@ -107,7 +118,7 @@ async def run_cfo_daily_loop(business_id: str) -> dict:
             }, "CFO daily insight")
 
         # Notify CEO if revenue off-track
-        if off_track_goals or yesterday_revenue == 0:
+        if risk_on and (off_track_goals or yesterday_revenue == 0):
             from backend.events.bus import publish
             await publish(bid, "internal.ceo_alert", {
                 "from": "CFO",

@@ -21,6 +21,17 @@ async def run_cmo_daily_loop(business_id: str) -> dict:
     now = datetime.now(timezone.utc)
     week_ago = (now - timedelta(days=7)).isoformat()
 
+    # Only run managers this business has enabled.
+    from backend.engines.business_blueprint import is_manager_enabled
+    try:
+        _biz = sb.table("businesses").select("config").eq("id", bid).limit(1).execute().data
+        config = (_biz[0].get("config") if _biz else {}) or {}
+    except Exception:
+        config = {}
+    lead_on = is_manager_enabled(config, "cmo", "lead")
+    campaign_on = is_manager_enabled(config, "cmo", "campaign")
+    content_on = is_manager_enabled(config, "cmo", "content")
+
     actions_taken = []
     approvals_queued = []
 
@@ -33,14 +44,14 @@ async def run_cmo_daily_loop(business_id: str) -> dict:
     contacted_7d = [l for l in leads if l.get("last_contacted") and l["last_contacted"] > week_ago]
 
     # If fewer than 20 leads in pipeline, auto-trigger discovery
-    if total_leads < 20:
+    if lead_on and total_leads < 20:
         await dispatch_action(bid, "run_lead_pipeline", {
             "industry": "medspa", "locations": [], "limit_per_location": 20, "skip_enrichment": True
         }, f"CMO daily loop: pipeline thin ({total_leads} leads), auto-discovering new leads")
         actions_taken.append(f"lead discovery queued (pipeline: {total_leads})")
 
     # Queue cold outreach for Tier A leads not yet contacted
-    if len(tier_a) > 0:
+    if lead_on and len(tier_a) > 0:
         await dispatch_action(bid, "send_cold_outreach", {
             "tier": "A", "min_score": 70, "limit": min(10, len(tier_a))
         }, f"CMO daily loop: {len(tier_a)} Tier A leads awaiting first contact")
@@ -55,7 +66,8 @@ async def run_cmo_daily_loop(business_id: str) -> dict:
 
     # ── 2. CAMPAIGN PERFORMANCE ──────────────────────────────
     campaigns = sb.table("campaigns").select("id,name,status,sent_count,response_count,booking_count")\
-        .eq("business_id", bid).eq("status", "active").execute().data or []
+        .eq("business_id", bid).eq("status", "active").execute().data if campaign_on else []
+    campaigns = campaigns or []
 
     for camp in campaigns:
         sent = camp.get("sent_count", 0) or 0
@@ -72,7 +84,7 @@ async def run_cmo_daily_loop(business_id: str) -> dict:
     # Check if a social post went out this week
     social_posts = sb.table("tasks").select("id,created_at").eq("business_id", bid)\
         .eq("workflow", "schedule_social_post").gte("created_at", week_ago).execute().data or []
-    if len(social_posts) == 0:
+    if len(social_posts) == 0 and content_on:
         await dispatch_action(bid, "schedule_social_post", {
             "platform": "instagram",
             "topic": "auto_generated",

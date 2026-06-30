@@ -21,13 +21,24 @@ async def run_csd_daily_loop(business_id: str) -> dict:
     yesterday_start = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0).isoformat()
     week_ago = (now - timedelta(days=7)).isoformat()
 
+    # Only run managers this business has enabled.
+    from backend.engines.business_blueprint import is_manager_enabled
+    try:
+        _biz = sb.table("businesses").select("config").eq("id", bid).limit(1).execute().data
+        config = (_biz[0].get("config") if _biz else {}) or {}
+    except Exception:
+        config = {}
+    success_on = is_manager_enabled(config, "csd", "customer_success")
+    loyalty_on = is_manager_enabled(config, "csd", "loyalty")
+    reputation_on = is_manager_enabled(config, "csd", "reputation")
+
     actions_taken = []
     approvals_queued = []
 
     # ── 0. INGEST REVIEWS (Google/Yelp/FB) before acting on reputation ──
     try:
         from backend.integrations.reputation_monitor import ingest_reviews
-        rep = await ingest_reviews(bid)
+        rep = await ingest_reviews(bid) if reputation_on else {}
         if rep.get("stored"):
             actions_taken.append(f"ingested {rep['stored']} reviews ({rep.get('negatives',0)} negative)")
     except Exception:
@@ -37,7 +48,7 @@ async def run_csd_daily_loop(business_id: str) -> dict:
     neg_calls = sb.table("calls").select("id,customer_id,sentiment,summary")\
         .eq("business_id", bid).eq("sentiment", "negative")\
         .gte("called_at", yesterday_start).execute().data or []
-    for call in neg_calls[:5]:
+    for call in (neg_calls[:5] if success_on else []):
         await dispatch_action(bid, "handle_complaint", {
             "customer_id": call.get("customer_id"),
             "call_id": call["id"],
@@ -46,7 +57,7 @@ async def run_csd_daily_loop(business_id: str) -> dict:
         approvals_queued.append(f"complaint follow-up: call {call['id']}")
 
     # Cross-dept: if multiple negatives, flag reputation risk to CEO
-    if len(neg_calls) >= 3:
+    if reputation_on and len(neg_calls) >= 3:
         try:
             from backend.events.inter_dept import csd_notify_ceo_reputation_risk
             await csd_notify_ceo_reputation_risk(bid, len(neg_calls), 2.0)
@@ -58,7 +69,7 @@ async def run_csd_daily_loop(business_id: str) -> dict:
     churn_risk = sb.table("customers").select("id,name,phone,tags,lifetime_value")\
         .eq("business_id", bid).eq("opt_out_sms", False)\
         .contains("tags", ["churn_risk"]).limit(10).execute().data or []
-    for c in churn_risk[:5]:
+    for c in (churn_risk[:5] if success_on else []):
         await dispatch_action(bid, "send_rebooking_reminder", {
             "customer_id": c["id"],
             "customer_name": c.get("name", ""),
@@ -71,7 +82,7 @@ async def run_csd_daily_loop(business_id: str) -> dict:
     completed_yesterday = sb.table("appointments").select("id,customer_id")\
         .eq("business_id", bid).eq("status", "completed")\
         .gte("scheduled_at", yesterday_start).execute().data or []
-    for appt in completed_yesterday[:10]:
+    for appt in (completed_yesterday[:10] if success_on else []):
         await dispatch_action(bid, "send_satisfaction_survey", {
             "customer_id": appt.get("customer_id"),
             "appointment_id": appt["id"],
@@ -82,7 +93,7 @@ async def run_csd_daily_loop(business_id: str) -> dict:
     vip_customers = sb.table("customers").select("id,name,phone,lifetime_value")\
         .eq("business_id", bid).gt("lifetime_value", 1000)\
         .eq("opt_out_sms", False).limit(5).execute().data or []
-    for c in vip_customers[:3]:
+    for c in (vip_customers[:3] if loyalty_on else []):
         # Check if reward sent in last 30 days
         recent_reward = sb.table("tasks").select("id")\
             .eq("business_id", bid).eq("workflow", "send_loyalty_reward")\
@@ -101,7 +112,7 @@ async def run_csd_daily_loop(business_id: str) -> dict:
         .eq("business_id", bid).eq("status", "completed")\
         .gte("scheduled_at", (now - timedelta(days=2)).isoformat())\
         .lte("scheduled_at", yesterday_start).execute().data or []
-    for appt in completed_no_review[:5]:
+    for appt in (completed_no_review[:5] if reputation_on else []):
         await dispatch_action(bid, "request_google_review", {
             "customer_id": appt.get("customer_id"),
             "appointment_id": appt["id"],
