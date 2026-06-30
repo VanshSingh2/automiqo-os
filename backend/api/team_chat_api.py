@@ -101,18 +101,6 @@ async def get_dm(business_id: str, agent_key: str, limit: int = 50):
         return {"member": name, "messages": [], "error": str(e)}
 
 
-_AGENT_PATHS = {
-    "ceo": "agents.executive.ceo.agent.CEOAgent",
-    "coo": "agents.departments.coo.agent.COOAgent",
-    "cmo": "agents.departments.cmo.agent.CMOAgent",
-    "cro": "agents.departments.cro.agent.CROAgent",
-    "cfo": "agents.departments.cfo.agent.CFOAgent",
-    "cto": "agents.departments.cto.agent.CTOAgent",
-    "csd": "agents.departments.customer_success.agent.CustomerSuccessAgent",
-    "learning": "agents.departments.learning.agent.LearningDirectorAgent",
-}
-
-
 class AskMember(BaseModel):
     agent_key: str
     message: str
@@ -121,39 +109,25 @@ class AskMember(BaseModel):
 @router.post("/team/{business_id}/ask")
 async def ask_member(business_id: str, body: AskMember):
     """
-    Owner chats 1:1 with a team member. Managers route to their department head
-    (with manager context). Stores both sides as a DM thread and returns the reply.
+    Owner chats 1:1 with a team member. Each member answers in their own voice
+    (PersonaChatAgent) with the live business profile + their recalled memory.
+    Stores both sides as a DM thread and returns the reply.
     """
     from uuid import UUID
-    import importlib
-    from backend.engines.business_blueprint import member_display, MANAGER_DESCRIPTIONS, DEPARTMENTS
+    from backend.engines.business_blueprint import member_display
     from backend.events.agent_chat import post_team_message
 
     agent_key = body.agent_key
     name = member_display(agent_key)
-    dept = "ceo" if agent_key == "ceo" else agent_key.split(".", 1)[0]
-    path = _AGENT_PATHS.get(dept)
-    if not path:
-        return {"reply": f"Unknown team member '{agent_key}'.", "member": name}
-
-    # Build the question, adding manager context if this is a manager.
-    question = body.message
-    if "." in agent_key:
-        manager = agent_key.split(".", 1)[1]
-        mlabel = DEPARTMENTS.get(dept, {}).get("managers", {}).get(manager, name)
-        mdesc = MANAGER_DESCRIPTIONS.get(agent_key, "")
-        question = (f"[You are the {mlabel} ({mdesc}). The owner is messaging you directly.] "
-                    f"{body.message}")
 
     # Record the owner's message in the DM thread.
     await post_team_message(business_id, "owner", body.message, to_agent=name, channel="dm")
 
-    # Run the agent.
+    # Answer in character.
     try:
-        module_path, class_name = path.rsplit(".", 1)
-        cls = getattr(importlib.import_module(module_path), class_name)
-        agent = cls(UUID(business_id))
-        resp = await agent.run(question, context={"_dm_from": "owner", "_member": agent_key})
+        from agents.persona_chat import PersonaChatAgent
+        agent = PersonaChatAgent(UUID(business_id), agent_key)
+        resp = await agent.run(body.message)
         reply = getattr(resp, "summary", None) or "Done."
     except Exception as e:
         reply = f"(Couldn't reach this member right now: {e})"
