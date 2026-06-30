@@ -670,6 +670,65 @@ ALTER TABLE knowledge       ADD COLUMN IF NOT EXISTS embedding vector(1536);
 ALTER TABLE knowledge       ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual';
 ALTER TABLE knowledge       ADD COLUMN IF NOT EXISTS approved BOOLEAN DEFAULT true;
 
+-- leads: full lead-intelligence + social column set (heals a pre-existing
+-- leads table created by the original setup_supabase.sql before migrations)
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS company_name TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS industry TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS website TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS address TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS state TEXT DEFAULT 'NJ';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS google_rating NUMERIC;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS review_count INTEGER DEFAULT 0;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS google_place_id TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS category TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS business_hours JSONB DEFAULT '[]';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS has_booking_system BOOLEAN DEFAULT false;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS has_website BOOLEAN DEFAULT false;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS has_chatbot BOOLEAN DEFAULT false;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS pricing_mentioned BOOLEAN DEFAULT false;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS booking_platform TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS tech_stack TEXT[] DEFAULT '{}';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS services_found TEXT[] DEFAULT '{}';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS owner_name TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS score INTEGER DEFAULT 0;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS tier TEXT DEFAULT 'C';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS score_reason TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS score_reasons TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'new';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'google_maps';
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS enriched BOOLEAN DEFAULT false;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS enrichment_failed BOOLEAN DEFAULT false;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS enrichment_method TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS email_source TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS tiktok TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS instagram_username TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS instagram_followers INTEGER DEFAULT 0;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS instagram_posts INTEGER DEFAULT 0;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS instagram_bio TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS instagram_verified BOOLEAN DEFAULT false;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS instagram_business BOOLEAN DEFAULT false;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS instagram_category TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS instagram_email TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS instagram_phone TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS instagram_external_url TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS instagram_scraped BOOLEAN DEFAULT false;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS facebook_page_name TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS facebook_url TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS facebook_phone TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS facebook_description TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS facebook_scraped BOOLEAN DEFAULT false;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS linkedin_company_url TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS linkedin_description TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS linkedin_employee_count TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS linkedin_industry TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS linkedin_scraped BOOLEAN DEFAULT false;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS scraped_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_contacted TIMESTAMPTZ;
+
 -- ============================================================================
 -- 12. ROW LEVEL SECURITY — enable + permissive service-role policy on EVERY
 --     public table (idempotent generic loop; backend uses the service key).
@@ -692,29 +751,74 @@ BEGIN
 END $$;
 
 -- ============================================================================
--- 13. INDEXES
+-- 12b. HEAL OLD TABLES — add business_id to any pre-existing table missing it
+--      (this is what causes "ERROR 42703 column business_id does not exist":
+--       a table created by a much older script that predates multi-tenancy).
 -- ============================================================================
 
-CREATE INDEX IF NOT EXISTS leads_tier_score        ON leads(business_id, tier, score DESC);
-CREATE INDEX IF NOT EXISTS leads_booking_platform  ON leads(business_id, booking_platform);
-CREATE INDEX IF NOT EXISTS leads_instagram         ON leads(business_id, instagram_username);
-CREATE INDEX IF NOT EXISTS leads_social_score      ON leads(business_id, score DESC, instagram_scraped);
-CREATE INDEX IF NOT EXISTS leads_enriched          ON leads(business_id, enriched, status);
-CREATE INDEX IF NOT EXISTS seq_enrollments_active  ON sequence_enrollments(business_id, status, next_step_at);
-CREATE INDEX IF NOT EXISTS seq_enrollments_phone   ON sequence_enrollments(business_id, phone, status);
-CREATE INDEX IF NOT EXISTS referrals_code          ON referrals(referral_code);
-CREATE INDEX IF NOT EXISTS referrals_referrer      ON referrals(business_id, referrer_id);
-CREATE INDEX IF NOT EXISTS events_type_biz         ON events(business_id, event_type, created_at DESC);
-CREATE INDEX IF NOT EXISTS events_recent           ON events(business_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS kpi_events_metric       ON kpi_events(business_id, metric, recorded_at DESC);
-CREATE INDEX IF NOT EXISTS agent_decisions_agent   ON agent_decisions(business_id, agent_name, decided_at DESC);
-CREATE INDEX IF NOT EXISTS reflections_mistake     ON reflections(business_id, mistake, created_at DESC);
-CREATE INDEX IF NOT EXISTS recommendations_engine  ON recommendations(business_id, status, generated_by);
-CREATE INDEX IF NOT EXISTS reports_type            ON reports(business_id, report_type, report_date DESC);
-CREATE INDEX IF NOT EXISTS conversations_phone     ON conversations(business_id, contact_phone);
-CREATE INDEX IF NOT EXISTS tasks_status            ON tasks(business_id, status, created_at DESC);
-CREATE INDEX IF NOT EXISTS appointments_sched      ON appointments(business_id, scheduled_at);
-CREATE INDEX IF NOT EXISTS customers_phone         ON customers(business_id, phone);
+DO $$
+DECLARE t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY[
+    'customers','staff','appointments','inventory','calls','messages','campaigns',
+    'tasks','internal_tasks','agent_memory','reflections','recommendations','reports',
+    'goals','knowledge','audit_log','experiments','vendors','purchase_orders','ai_costs',
+    'notifications_log','owners','success_scripts','failure_patterns','equipment',
+    'resources','locations','events','agent_decisions','kpi_events','leads',
+    'conversations','sequence_enrollments','referrals'
+  ]
+  LOOP
+    IF EXISTS (SELECT 1 FROM information_schema.tables
+              WHERE table_schema='public' AND table_name=t)
+       AND NOT EXISTS (SELECT 1 FROM information_schema.columns
+              WHERE table_schema='public' AND table_name=t AND column_name='business_id')
+    THEN
+      EXECUTE format('ALTER TABLE public.%I ADD COLUMN business_id UUID', t);
+      RAISE NOTICE 'Added missing business_id to %', t;
+    END IF;
+  END LOOP;
+END $$;
+
+-- ============================================================================
+-- 13. INDEXES — wrapped so a missing column skips that index instead of
+--     aborting the whole script (handles partially-migrated tables).
+-- ============================================================================
+
+DO $$
+DECLARE
+  stmt text;
+  idx_statements text[] := ARRAY[
+    'CREATE INDEX IF NOT EXISTS leads_tier_score ON leads(business_id, tier, score DESC)',
+    'CREATE INDEX IF NOT EXISTS leads_booking_platform ON leads(business_id, booking_platform)',
+    'CREATE INDEX IF NOT EXISTS leads_instagram ON leads(business_id, instagram_username)',
+    'CREATE INDEX IF NOT EXISTS leads_social_score ON leads(business_id, score DESC, instagram_scraped)',
+    'CREATE INDEX IF NOT EXISTS leads_enriched ON leads(business_id, enriched, status)',
+    'CREATE INDEX IF NOT EXISTS seq_enrollments_active ON sequence_enrollments(business_id, status, next_step_at)',
+    'CREATE INDEX IF NOT EXISTS seq_enrollments_phone ON sequence_enrollments(business_id, phone, status)',
+    'CREATE INDEX IF NOT EXISTS referrals_code ON referrals(referral_code)',
+    'CREATE INDEX IF NOT EXISTS referrals_referrer ON referrals(business_id, referrer_id)',
+    'CREATE INDEX IF NOT EXISTS events_type_biz ON events(business_id, event_type, created_at DESC)',
+    'CREATE INDEX IF NOT EXISTS events_recent ON events(business_id, created_at DESC)',
+    'CREATE INDEX IF NOT EXISTS kpi_events_metric ON kpi_events(business_id, metric, recorded_at DESC)',
+    'CREATE INDEX IF NOT EXISTS agent_decisions_agent ON agent_decisions(business_id, agent_name, decided_at DESC)',
+    'CREATE INDEX IF NOT EXISTS reflections_mistake ON reflections(business_id, mistake, created_at DESC)',
+    'CREATE INDEX IF NOT EXISTS recommendations_engine ON recommendations(business_id, status, generated_by)',
+    'CREATE INDEX IF NOT EXISTS reports_type ON reports(business_id, report_type, report_date DESC)',
+    'CREATE INDEX IF NOT EXISTS conversations_phone ON conversations(business_id, contact_phone)',
+    'CREATE INDEX IF NOT EXISTS tasks_status ON tasks(business_id, status, created_at DESC)',
+    'CREATE INDEX IF NOT EXISTS appointments_sched ON appointments(business_id, scheduled_at)',
+    'CREATE INDEX IF NOT EXISTS customers_phone ON customers(business_id, phone)'
+  ];
+BEGIN
+  FOREACH stmt IN ARRAY idx_statements
+  LOOP
+    BEGIN
+      EXECUTE stmt;
+    EXCEPTION WHEN undefined_column THEN
+      RAISE NOTICE 'Skipped index (missing column): %', stmt;
+    END;
+  END LOOP;
+END $$;
 
 -- ============================================================================
 -- 14. SEMANTIC SEARCH FUNCTION + SEQUENCE STATS VIEW
