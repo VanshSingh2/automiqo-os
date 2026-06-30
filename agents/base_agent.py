@@ -88,8 +88,16 @@ class BaseAgent(ABC):
         except Exception:
             return []
 
-    async def remember(self, content: str, source: str = "agent_action") -> None:
-        """Store a fact in reflections table for learning loop."""
+    async def remember(self, content: str, source: str = "agent_action", category: str = "general") -> None:
+        """Store a fact in unified memory (Mem0 -> pgvector) AND the reflections log."""
+        # Unified semantic memory (Mem0 if available, else pgvector) — shared across all bots
+        try:
+            from backend.memory.memory_service import memory_for
+            await memory_for(str(self.business_id)).remember_fact(
+                content, category=category, agent=self.__class__.__name__)
+        except Exception:
+            pass
+        # Episodic reflections log (for the learning loop)
         try:
             from backend.memory.supabase_client import get_supabase
             get_supabase().table("reflections").insert({
@@ -103,7 +111,15 @@ class BaseAgent(ABC):
             pass
 
     async def recall_facts(self, query: str, limit: int = 5) -> list:
-        """Recall relevant past reflections/facts (lightweight Graphiti substitute)."""
+        """Recall relevant facts via unified memory (Mem0 -> pgvector -> keyword)."""
+        try:
+            from backend.memory.memory_service import memory_for
+            results = await memory_for(str(self.business_id)).recall_facts(query, limit)
+            if results:
+                return results
+        except Exception:
+            pass
+        # Last-resort fallback: keyword scan over reflections
         try:
             from backend.memory.supabase_client import get_supabase
             result = get_supabase().table("reflections") \
@@ -117,6 +133,18 @@ class BaseAgent(ABC):
             return [r for r, _ in scored[:limit]]
         except Exception:
             return []
+
+    async def recall(self, query: str, limit: int = 5) -> list:
+        """Alias for recall_facts — the simple call any agent uses."""
+        return await self.recall_facts(query, limit)
+
+    async def memory_context(self, query: str, customer_id: str = None) -> str:
+        """Compact memory block (facts + lessons + customer) ready to drop in a prompt."""
+        try:
+            from backend.memory.memory_service import memory_for
+            return await memory_for(str(self.business_id)).build_context(query, customer_id)
+        except Exception:
+            return ""
 
     def _inject_biz(self, prompt: str) -> str:
         """Replace template vars with this business's full profile from config."""

@@ -28,8 +28,17 @@ class MemoryService:
         self.business_id = str(business_id)
 
     # ── REMEMBER ──────────────────────────────────────────────────────────────
-    async def remember_fact(self, content: str, title: str = "", category: str = "general") -> None:
-        """Store a durable fact in semantic memory (pgvector if available)."""
+    async def remember_fact(self, content: str, title: str = "", category: str = "general", agent: str = "shared") -> None:
+        """Store a durable fact. Mem0 first (if available), else pgvector/knowledge."""
+        # 1) Mem0 semantic layer (rides on pgvector, dedupes + summarizes)
+        try:
+            from backend.memory import mem0_backend
+            if mem0_backend.add(self.business_id, content, agent=agent,
+                                metadata={"title": title, "category": category}):
+                return
+        except Exception:
+            pass
+        # 2) Fallback: embed into knowledge table directly
         try:
             from backend.memory.semantic import embed_and_store
             await embed_and_store(self.business_id, category, title or content[:60], content, source="agent")
@@ -68,8 +77,23 @@ class MemoryService:
             pass
 
     # ── RECALL ────────────────────────────────────────────────────────────────
-    async def recall_facts(self, query: str, limit: int = 5, category: str = None) -> list[dict]:
-        """Semantic recall of facts. Falls back to keyword scoring if no embeddings."""
+    async def recall_facts(self, query: str, limit: int = 5, category: str = None, agent: str = None) -> list[dict]:
+        """Semantic recall. Mem0 first (fast, ranked), else pgvector, else keyword."""
+        # 1) Mem0 semantic search
+        try:
+            from backend.memory import mem0_backend
+            hits = mem0_backend.search(self.business_id, query, agent=agent, limit=limit)
+            if hits is not None:
+                return [
+                    {"content": h.get("memory", h.get("text", "")),
+                     "title": (h.get("metadata") or {}).get("title", ""),
+                     "category": (h.get("metadata") or {}).get("category", ""),
+                     "score": h.get("score")}
+                    for h in hits
+                ]
+        except Exception:
+            pass
+        # 2) pgvector semantic search
         try:
             from backend.memory.semantic import semantic_search
             results = await semantic_search(self.business_id, query, category, limit)
@@ -77,7 +101,7 @@ class MemoryService:
                 return results
         except Exception:
             pass
-        # Keyword fallback
+        # 3) Keyword fallback over knowledge table
         sb = get_supabase()
         q = sb.table("knowledge").select("title,content,category").eq("business_id", self.business_id)
         if category:

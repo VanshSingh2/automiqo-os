@@ -2,12 +2,31 @@
 
 ## TL;DR recommendation
 
-**Don't add Graphiti + Neo4j.** It needs ~1.5GB+ RAM (Neo4j) and is overkill for a
-local-service-business OS. You already have everything you need on Supabase.
+**Mem0 is the chosen memory engine** — backed by the Supabase/pgvector you already
+run. It gives every bot (CEO, CTO, managers, workers) fast shared memory with
+~150MB RAM and zero new service. Graphiti+Neo4j (~1.5GB) was rejected as too heavy.
 
-Use the **Unified Memory Service** (`backend/memory/memory_service.py`) — it gives
-agents Mem0-style layered memory with **zero extra RAM and zero new infrastructure**,
-because it reuses the Supabase + pgvector you already run.
+It's wired behind `MemoryService` with **automatic fallback**: if `mem0ai` isn't
+installed or `MEM0_DB_URL` isn't set, it transparently uses pgvector — the app
+never breaks.
+
+### One-time VPS setup
+```bash
+pip install mem0ai
+# Supabase -> Settings -> Database -> Connection string (direct):
+export MEM0_DB_URL="postgresql://postgres:<password>@db.<project>.supabase.co:5432/postgres"
+```
+That's it. On next start, all bots use Mem0 automatically.
+
+### How any agent uses it (zero boilerplate)
+```python
+await self.remember("Customer Jane prefers morning appointments")   # any agent
+facts = await self.recall("Jane appointment preferences")
+block = await self.memory_context("botox pricing", customer_id=cid)  # prompt-ready
+```
+`self.remember` / `self.recall` / `self.memory_context` are on BaseAgent, so every
+department head, manager, and worker shares the same fast memory, scoped by
+business_id (tenant) + agent name.
 
 ## The 4 memory layers (all free, already running)
 
