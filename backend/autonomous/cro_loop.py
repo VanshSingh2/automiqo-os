@@ -40,6 +40,16 @@ async def run_cro_daily_loop(business_id: str) -> dict:
         }, f"CRO daily loop: {customer.get('name','?')} dormant 30+ days (LTV ${customer.get('lifetime_value',0)})")
         approvals_queued.append(f"reactivation: {customer.get('name','?')}")
 
+    # Cross-dept: hand VIP dormant customers (LTV > 1000) to CSD for personal outreach
+    vip_dormant = [c for c in dormant if float(c.get("lifetime_value") or 0) > 1000]
+    if vip_dormant:
+        try:
+            from backend.events.inter_dept import cro_notify_csd_dormant_vips
+            await cro_notify_csd_dormant_vips(bid, vip_dormant)
+            actions_taken.append(f"handed {len(vip_dormant)} VIP dormant to CSD")
+        except Exception:
+            pass
+
     # ── 2. MEMBERSHIPS EXPIRING THIS WEEK ────────────────────
     expiring = sb.table("customers").select("id,name,phone,tags")\
         .eq("business_id", bid).contains("tags", ["membership_active"]).execute().data or []

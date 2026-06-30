@@ -31,6 +31,12 @@ async def run_nightly_learning():
             # 3. AI Mentor coaching (Sundays only)
             if datetime.now(timezone.utc).weekday() == 6:
                 await ai_mentor.coach_all_departments(bid_str)
+                # Weekly executive report → emailed to owner
+                try:
+                    from backend.engines.weekly_report import weekly_report
+                    await weekly_report.generate(bid_str)
+                except Exception:
+                    pass
                 print(f"[nightly][{bid_str[:8]}] AI Mentor coached depts")
 
             # 4. Learning Director reflection

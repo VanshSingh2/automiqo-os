@@ -24,6 +24,15 @@ async def run_csd_daily_loop(business_id: str) -> dict:
     actions_taken = []
     approvals_queued = []
 
+    # ── 0. INGEST REVIEWS (Google/Yelp/FB) before acting on reputation ──
+    try:
+        from backend.integrations.reputation_monitor import ingest_reviews
+        rep = await ingest_reviews(bid)
+        if rep.get("stored"):
+            actions_taken.append(f"ingested {rep['stored']} reviews ({rep.get('negatives',0)} negative)")
+    except Exception:
+        pass
+
     # ── 1. NEGATIVE REVIEWS ──────────────────────────────────
     neg_calls = sb.table("calls").select("id,customer_id,sentiment,summary")\
         .eq("business_id", bid).eq("sentiment", "negative")\
@@ -35,6 +44,15 @@ async def run_csd_daily_loop(business_id: str) -> dict:
             "summary": call.get("summary", ""),
         }, "CSD daily loop: negative call sentiment from yesterday")
         approvals_queued.append(f"complaint follow-up: call {call['id']}")
+
+    # Cross-dept: if multiple negatives, flag reputation risk to CEO
+    if len(neg_calls) >= 3:
+        try:
+            from backend.events.inter_dept import csd_notify_ceo_reputation_risk
+            await csd_notify_ceo_reputation_risk(bid, len(neg_calls), 2.0)
+            actions_taken.append(f"alerted CEO: {len(neg_calls)} negative interactions")
+        except Exception:
+            pass
 
     # ── 2. CHURN RISK CUSTOMERS ──────────────────────────────
     churn_risk = sb.table("customers").select("id,name,phone,tags,lifetime_value")\

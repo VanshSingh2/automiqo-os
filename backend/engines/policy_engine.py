@@ -65,6 +65,7 @@ POLICIES: dict[str, tuple[str, bool, bool]] = {
     "enrich_lead_profile":            ("medium",   True,  False),
 
     # HIGH — requires owner approval before firing
+    "place_inventory_order":          ("high",     False, True),
     "send_cold_outreach":             ("high",     False, True),
     "reactivate_dormant_member":      ("high",     False, True),
     "send_upsell_offer":              ("high",     False, True),

@@ -119,17 +119,44 @@ class BaseAgent(ABC):
             return []
 
     def _inject_biz(self, prompt: str) -> str:
-        """Replace {business_name}, {industry}, {timezone} with real values from Supabase."""
+        """Replace template vars with this business's full profile from config."""
         from backend.memory.supabase_client import get_supabase
         try:
-            result = get_supabase().table("businesses").select("name,industry,timezone") \
+            result = get_supabase().table("businesses").select("name,industry,timezone,config") \
                 .eq("id", str(self.business_id)).limit(1).execute()
             biz = result.data[0] if result.data else {}
         except Exception:
             biz = {}
+        cfg = biz.get("config") or {}
         from datetime import datetime, timezone as tz
+
+        # Build a compact business-context block agents can rely on
+        services = cfg.get("services") or []
+        svc_str = ", ".join(
+            f"{s.get('name')}(${s.get('price','?')})" for s in services[:12]
+        ) if services else "not specified"
+        hours = cfg.get("business_hours") or {}
+        hours_str = ", ".join(f"{k}:{v}" for k, v in hours.items()) if hours else "not specified"
+
+        context_block = (
+            f"Business: {biz.get('name','Your Business')} | Industry: {biz.get('industry','service')} | "
+            f"Location: {cfg.get('city','')}, {cfg.get('state','')}\n"
+            f"Brand voice: {cfg.get('brand_voice','friendly, professional')}\n"
+            f"Services: {svc_str}\n"
+            f"Hours: {hours_str}\n"
+            f"Booking link: {cfg.get('booking_url','(none set)')}\n"
+            f"Target customer: {cfg.get('target_customer','local customers')}\n"
+            f"Monthly revenue goal: ${cfg.get('monthly_revenue_goal','not set')}\n"
+            f"Avg ticket: ${cfg.get('avg_ticket_value','?')}\n"
+            f"Policies: {'; '.join(cfg.get('policies', [])) or 'standard'}\n"
+            f"USPs: {'; '.join(cfg.get('unique_selling_points', [])) or 'quality service'}"
+        )
+
         return prompt \
             .replace("{business_name}", biz.get("name", "Your Business")) \
             .replace("{industry}", biz.get("industry", "service")) \
             .replace("{timezone}", biz.get("timezone", "America/New_York")) \
-            .replace("{date}", datetime.now(tz.utc).strftime("%Y-%m-%d"))
+            .replace("{date}", datetime.now(tz.utc).strftime("%Y-%m-%d")) \
+            .replace("{brand_voice}", cfg.get("brand_voice", "friendly, professional")) \
+            .replace("{booking_url}", cfg.get("booking_url", "")) \
+            .replace("{business_context}", context_block)

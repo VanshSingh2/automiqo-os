@@ -83,10 +83,54 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] = Field(default_factory=list)
 
 
+class ServiceItem(BaseModel):
+    name: str
+    price: Optional[float] = None
+    duration_minutes: Optional[int] = None
+    description: Optional[str] = None
+
+
+class StaffMember(BaseModel):
+    name: str
+    role: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    services: list[str] = Field(default_factory=list)
+
+
+class FAQItem(BaseModel):
+    question: str
+    answer: str
+
+
 class OnboardRequest(BaseModel):
+    # Core identity
     name: str
     industry: str
     phone: Optional[str] = None
     email: Optional[str] = None
     address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
     timezone: str = "America/New_York"
+    website: Optional[str] = None
+
+    # Business brain — how agents should operate for THIS business
+    services: list[ServiceItem] = Field(default_factory=list)
+    staff: list[StaffMember] = Field(default_factory=list)
+    business_hours: dict[str, str] = Field(default_factory=dict)   # {"mon": "9-5", ...}
+    booking_url: Optional[str] = None                              # Cal.com link
+    brand_voice: str = "friendly, professional, concise"
+    target_customer: Optional[str] = None
+    monthly_revenue_goal: Optional[float] = None
+    avg_ticket_value: Optional[float] = None
+    policies: list[str] = Field(default_factory=list)              # cancellation, refund, etc.
+    faqs: list[FAQItem] = Field(default_factory=list)
+    competitors: list[str] = Field(default_factory=list)
+    unique_selling_points: list[str] = Field(default_factory=list)
+
+
+class OnboardUpdateRequest(BaseModel):
+    """Partial update of an existing business profile."""
+    business_id: UUID
+    updates: dict[str, Any] = Field(default_factory=dict)

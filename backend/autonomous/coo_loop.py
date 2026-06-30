@@ -51,6 +51,18 @@ async def run_coo_daily_loop(business_id: str) -> dict:
         }, "COO daily loop: auto-log yesterday no-show")
         actions_taken.append(f"logged no-show {ns['id']}")
 
+    # Cross-dept: if no-show rate is high, alert CMO to prep re-engagement
+    yest_total = len(no_shows) + len([a for a in appts if a.get("status") == "completed"])
+    if no_shows and yest_total > 0:
+        rate = len(no_shows) / max(yest_total, 1) * 100
+        if rate >= 20:
+            try:
+                from backend.events.inter_dept import coo_notify_cmo_high_noshow
+                await coo_notify_cmo_high_noshow(bid, len(no_shows), rate)
+                actions_taken.append(f"alerted CMO: no-show rate {rate:.0f}%")
+            except Exception:
+                pass
+
     # ── 3. INVENTORY REORDER CHECK ───────────────────────────
     low_stock = sb.table("inventory").select("id,product_name,quantity,reorder_threshold")\
         .eq("business_id", bid).execute().data or []
@@ -58,12 +70,23 @@ async def run_coo_daily_loop(business_id: str) -> dict:
         qty = item.get("quantity", 0) or 0
         threshold = item.get("reorder_threshold", 0) or 0
         if qty <= threshold:
+            # 1) Auto-send the low-stock alert (informational, low-risk)
             await dispatch_action(bid, "send_inventory_reorder_alert", {
                 "product_name": item["product_name"],
                 "current_quantity": qty,
                 "reorder_threshold": threshold,
             }, f"COO daily loop: {item['product_name']} at {qty} units (threshold {threshold})")
-            approvals_queued.append(f"reorder alert: {item['product_name']}")
+            # 2) Queue the ACTUAL reorder for owner approval — never auto-placed.
+            #    place_inventory_order is policy 'high' => requires_approval, so
+            #    dispatch_action routes it into the recommendations approval queue.
+            reorder_qty = max((threshold * 2) - qty, threshold)
+            await dispatch_action(bid, "place_inventory_order", {
+                "product_name": item["product_name"],
+                "supplier": item.get("supplier"),
+                "reorder_quantity": reorder_qty,
+                "items": [{"product": item["product_name"], "quantity": reorder_qty}],
+            }, f"COO: reorder {reorder_qty}x {item['product_name']} (at {qty}/{threshold}) — needs owner approval")
+            approvals_queued.append(f"inventory order (approval): {item['product_name']}")
 
     # ── 4. STAFF COVERAGE CHECK ──────────────────────────────
     staff = sb.table("staff").select("id,name,role").eq("business_id", bid).eq("active", True).execute().data or []

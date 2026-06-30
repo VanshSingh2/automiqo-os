@@ -1,0 +1,18 @@
+{
+  "name": "Ingest Reviews",
+  "active": true,
+  "nodes": [
+    {"id":"wh","name":"Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[240,300],"parameters":{"httpMethod":"POST","path":"ingest_reviews","responseMode":"responseNode"}},
+    {"id":"val","name":"Validate","type":"n8n-nodes-base.code","typeVersion":2,"position":[460,300],"parameters":{"jsCode":"const d=$input.first().json;\nif(!d.business_id) throw new Error('Missing business_id');\nreturn [{json:{business_id:d.business_id,task_id:d.task_id||null}}];"}},
+    {"id":"ingest","name":"Ingest Reviews (backend)","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[680,300],"parameters":{"method":"POST","url":"={{ $env.BACKEND_URL }}/reputation/{{ $json.business_id }}/ingest","sendHeaders":true,"headerParameters":{"parameters":[{"name":"Content-Type","value":"application/json"}]}}},
+    {"id":"task","name":"Update Task","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[900,300],"parameters":{"method":"PATCH","url":"={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({status:'completed',result:JSON.stringify($('Ingest Reviews (backend)').item.json),completed_at:new Date().toISOString()}) }}"}},
+    {"id":"resp","name":"Respond","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1120,300],"parameters":{"respondWith":"json","responseBody":"={{ JSON.stringify({success:true,workflow:'ingest_reviews',data:$('Ingest Reviews (backend)').item.json}) }}"}}
+  ],
+  "connections":{
+    "Webhook":{"main":[[{"node":"Validate","type":"main","index":0}]]},
+    "Validate":{"main":[[{"node":"Ingest Reviews (backend)","type":"main","index":0}]]},
+    "Ingest Reviews (backend)":{"main":[[{"node":"Update Task","type":"main","index":0}]]},
+    "Update Task":{"main":[[{"node":"Respond","type":"main","index":0}]]}
+  },
+  "settings":{"executionOrder":"v1"},"tags":["customer_success","reputation"]
+}

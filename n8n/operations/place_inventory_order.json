@@ -1,0 +1,20 @@
+{
+  "name": "Place Inventory Order",
+  "active": true,
+  "nodes": [
+    {"id":"wh","name":"Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[240,300],"parameters":{"httpMethod":"POST","path":"place_inventory_order","responseMode":"responseNode"}},
+    {"id":"val","name":"Validate","type":"n8n-nodes-base.code","typeVersion":2,"position":[460,300],"parameters":{"jsCode":"const d=$input.first().json;\nif(!d.business_id) throw new Error('Missing business_id');\nconst p=d.parameters||{};\n// HARD GATE: an inventory order may only run if the owner approved it.\nif(!p.approved && !p.approval_id) throw new Error('Inventory order requires owner approval — not approved');\nreturn [{json:{business_id:d.business_id,task_id:d.task_id||null,vendor_id:p.vendor_id||null,vendor_name:p.vendor_name||'',items:p.items||[],total_amount:p.total_amount||0,approval_id:p.approval_id||null}}];"}},
+    {"id":"po","name":"Create Purchase Order","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[680,300],"parameters":{"method":"POST","url":"={{ $env.SUPABASE_URL }}/rest/v1/purchase_orders","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"},{"name":"Prefer","value":"return=representation"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({business_id:$json.business_id,vendor_id:$json.vendor_id,items:$json.items,total_amount:$json.total_amount,status:'sent',sent_at:new Date().toISOString()}) }}"}},
+    {"id":"notify","name":"Notify Vendor Email","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[900,300],"parameters":{"method":"POST","url":"https://api.resend.com/emails","sendHeaders":true,"headerParameters":{"parameters":[{"name":"Authorization","value":"=Bearer {{ $env.RESEND_API_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({from:'orders@automiqo.com',to:['orders@vendor.example'],subject:'Purchase Order',text:'New order: '+JSON.stringify($('Validate').first().json.items)}) }}"}},
+    {"id":"task","name":"Update Task","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1120,300],"parameters":{"method":"PATCH","url":"={{ $env.SUPABASE_URL }}/rest/v1/tasks?id=eq.{{ $('Validate').item.json.task_id }}","sendHeaders":true,"headerParameters":{"parameters":[{"name":"apikey","value":"={{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Authorization","value":"=Bearer {{ $env.SUPABASE_SERVICE_KEY }}"},{"name":"Content-Type","value":"application/json"}]},"sendBody":true,"specifyBody":"json","jsonBody":"={{ JSON.stringify({status:'completed',result:JSON.stringify({ordered:true,total:$('Validate').first().json.total_amount}),completed_at:new Date().toISOString()}) }}"}},
+    {"id":"resp","name":"Respond","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1340,300],"parameters":{"respondWith":"json","responseBody":"={{ JSON.stringify({success:true,workflow:'place_inventory_order',total:$('Validate').first().json.total_amount}) }}"}}
+  ],
+  "connections":{
+    "Webhook":{"main":[[{"node":"Validate","type":"main","index":0}]]},
+    "Validate":{"main":[[{"node":"Create Purchase Order","type":"main","index":0}]]},
+    "Create Purchase Order":{"main":[[{"node":"Notify Vendor Email","type":"main","index":0}]]},
+    "Notify Vendor Email":{"main":[[{"node":"Update Task","type":"main","index":0}]]},
+    "Update Task":{"main":[[{"node":"Respond","type":"main","index":0}]]}
+  },
+  "settings":{"executionOrder":"v1"},"tags":["operations","inventory","approval-required"]
+}

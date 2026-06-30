@@ -113,8 +113,16 @@ async def run_cfo_daily_loop(business_id: str) -> dict:
                 "from": "CFO",
                 "message": f"Revenue alert: yesterday ${yesterday_revenue:.0f}, MTD ${mtd_revenue:.0f}. Off-track goals: {off_track_goals}",
                 "trigger_action": "generate_revenue_report",
+                "urgency": "high",
             }, source="cfo_daily_loop")
-            actions_taken.append("CEO alerted: revenue off-track")
+            # Cross-dept: tell CRO to push quick-win revenue actions
+            try:
+                from backend.events.inter_dept import cfo_notify_cro_revenue_gap
+                days_left = max(1, 30 - now.day)
+                await cfo_notify_cro_revenue_gap(bid, max(yesterday_revenue, 500), days_left)
+            except Exception:
+                pass
+            actions_taken.append("CEO + CRO alerted: revenue off-track")
     except Exception:
         pass
 

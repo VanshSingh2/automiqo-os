@@ -45,6 +45,13 @@ async def run_cmo_daily_loop(business_id: str) -> dict:
             "tier": "A", "min_score": 70, "limit": min(10, len(tier_a))
         }, f"CMO daily loop: {len(tier_a)} Tier A leads awaiting first contact")
         approvals_queued.append(f"cold outreach: {len(tier_a)} Tier A leads")
+        # Cross-dept: tell CRO to queue outbound qualification calls for hot leads
+        try:
+            from backend.events.inter_dept import cmo_notify_cro_hot_leads
+            await cmo_notify_cro_hot_leads(bid, len(tier_a), tier_a)
+            actions_taken.append(f"alerted CRO: {len(tier_a)} hot leads")
+        except Exception:
+            pass
 
     # ── 2. CAMPAIGN PERFORMANCE ──────────────────────────────
     campaigns = sb.table("campaigns").select("id,name,status,sent_count,response_count,booking_count")\
