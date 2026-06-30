@@ -3,11 +3,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, MessagesSquare, Activity, Bot,
-  CheckSquare, FileText, SlidersHorizontal,
+  CheckSquare, FileText, SlidersHorizontal, Users,
 } from "@/components/icons";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/team-members", label: "Team Members", icon: Users },
   { href: "/team", label: "Team Chat", icon: MessagesSquare },
   { href: "/activity", label: "Activity", icon: Activity },
   { href: "/chat", label: "CEO AI", icon: Bot },
@@ -30,7 +31,7 @@ export default function Sidebar() {
 
       <nav className="flex flex-col gap-1">
         {NAV.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || (href !== "/" && pathname.startsWith(href));
+          const active = pathname === href || (href !== "/" && pathname.startsWith(href + "/"));
           return (
             <Link key={href} href={href} className={`nav-link ${active ? "nav-link-active" : ""}`}>
               <Icon className="h-[18px] w-[18px]" strokeWidth={2} />

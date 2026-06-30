@@ -55,15 +55,16 @@ async def post_team_message(
     category: str = "update",
     urgency: str = "normal",
     related_event_id: Optional[str] = None,
+    channel: str = "team",
 ) -> Optional[str]:
-    """Post a message into the team group chat. Best-effort, never raises."""
+    """Post a message into the team group chat (or a DM). Best-effort, never raises."""
     try:
         from backend.memory.supabase_client import get_supabase
         name, role = agent_display(from_agent)
         sb = get_supabase()
         row = {
             "business_id": business_id,
-            "channel": "team",
+            "channel": channel,
             "from_agent": name,
             "from_role": role,
             "to_agent": to_agent,

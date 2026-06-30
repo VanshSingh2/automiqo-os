@@ -4,7 +4,7 @@ import Link from "next/link";
 import {
   DollarSign, CalendarCheck, CheckCircle2, UserX, Users, ArrowRight, Activity as ActivityIcon,
 } from "@/components/icons";
-import { fetchMetrics, getBackstage, type ActivityItem } from "@/lib/api";
+import { fetchMetrics, getBackstage, getTeamMembers, type ActivityItem, type Roster } from "@/lib/api";
 
 const BUSINESS_ID = process.env.NEXT_PUBLIC_BUSINESS_ID || "00000000-0000-0000-0000-000000000001";
 
@@ -25,6 +25,7 @@ const fmtTime = (s?: string) => {
 export default function DashboardPage() {
   const [metrics, setMetrics] = useState<Metrics>({});
   const [activity, setActivity] = useState<ActivityItem[]>([]);
+  const [roster, setRoster] = useState<Roster | null>(null);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
 
@@ -36,6 +37,7 @@ export default function DashboardPage() {
         setLoading(false);
       });
       getBackstage(BUSINESS_ID).then((a) => setActivity(a.slice(0, 8)));
+      getTeamMembers(BUSINESS_ID).then((r) => setRoster(r));
     };
     load();
     const t = setInterval(load, 30000);
@@ -105,6 +107,38 @@ export default function DashboardPage() {
 
         {/* Quick links */}
         <div className="flex flex-col gap-4">
+          <Link href="/team-members" className="soft-card group p-5 transition hover:-translate-y-0.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-indigo-500" />
+                <p className="font-medium text-slate-800">Your Team</p>
+              </div>
+              <ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:text-indigo-500" />
+            </div>
+            {roster ? (
+              <>
+                <p className="mt-3 text-2xl font-semibold text-slate-800">
+                  {roster.active}<span className="text-base font-normal text-slate-400"> / {roster.total} active</span>
+                </p>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {roster.members.filter((m) => m.enabled).slice(0, 8).map((m) => (
+                    <span key={m.key} title={`${m.name} — ${m.description}`}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-400 to-teal-400 text-[10px] font-bold text-white">
+                      {(m.name.split(/\s+/)[0]?.[0] || "") + (m.name.split(/\s+/)[1]?.[0] || "")}
+                    </span>
+                  ))}
+                  {roster.active > 8 && (
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-100 text-[10px] font-semibold text-slate-400">
+                      +{roster.active - 8}
+                    </span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="mt-3 text-xs text-slate-400">Loading your team…</p>
+            )}
+          </Link>
+
           <Link href="/team" className="soft-card group flex items-center justify-between p-5 transition hover:-translate-y-0.5">
             <div>
               <p className="font-medium text-slate-800">Team Chat</p>

@@ -163,3 +163,54 @@ export async function setModule(
     return data.modules || null;
   } catch { return null; }
 }
+
+
+// ── Team members (roster + 1:1 chat) ───────────────────────────────────────
+export type TeamMember = {
+  key: string;
+  name: string;
+  role: "executive" | "department" | "manager";
+  dept: string;
+  dept_label: string;
+  description: string;
+  enabled: boolean;
+  can_chat: boolean;
+  can_toggle: boolean;
+};
+
+export type Roster = {
+  total: number;
+  active: number;
+  profile: string;
+  members: TeamMember[];
+};
+
+export async function getTeamMembers(businessId: string): Promise<Roster | null> {
+  try {
+    const res = await fetch(`${BASE}/team/${businessId}/members`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch { return null; }
+}
+
+export async function getMemberDM(businessId: string, agentKey: string): Promise<TeamMessage[]> {
+  try {
+    const res = await fetch(`${BASE}/team/${businessId}/dm/${encodeURIComponent(agentKey)}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.messages || [];
+  } catch { return []; }
+}
+
+export async function askMember(businessId: string, agentKey: string, message: string): Promise<string> {
+  try {
+    const res = await fetch(`${BASE}/team/${businessId}/ask`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agent_key: agentKey, message }),
+    });
+    if (!res.ok) return "(No response — is the backend running?)";
+    const data = await res.json();
+    return data.reply || "Done.";
+  } catch { return "(Couldn't reach the team member.)"; }
+}
