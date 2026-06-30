@@ -119,3 +119,69 @@ async def memory_context(business_id: str, query: str, customer_id: Optional[str
     from backend.memory.memory_service import memory_for
     ctx = await memory_for(business_id).build_context(query, customer_id)
     return {"context": ctx}
+
+
+# ── Module blueprint (which departments / managers run for this business) ───
+@router.get("/modules/registry")
+async def modules_registry():
+    """Full catalog of departments + managers + available profiles (for the UI)."""
+    from backend.engines.business_blueprint import DEPARTMENTS, PROFILES, SCHEDULABLE_DEPTS
+    return {
+        "departments": [
+            {
+                "key": d,
+                "label": meta["label"],
+                "schedulable": d in SCHEDULABLE_DEPTS,
+                "managers": [{"key": mk, "label": ml} for mk, ml in meta["managers"].items()],
+            }
+            for d, meta in DEPARTMENTS.items() if d != "ceo"
+        ],
+        "profiles": list(PROFILES.keys()),
+    }
+
+
+@router.get("/modules/{business_id}")
+async def get_modules(business_id: str):
+    """Resolved module tree for a business (profile defaults + owner overrides)."""
+    from backend.engines.business_blueprint import summary
+    sb = get_supabase()
+    biz = sb.table("businesses").select("config,industry").eq("id", business_id).limit(1).execute().data
+    if not biz:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Business not found")
+    config = biz[0].get("config") or {}
+    config.setdefault("industry", biz[0].get("industry"))
+    return summary(config)
+
+
+class ModuleToggleRequest(BaseModel):
+    # Either toggle a department (manager=None) or a single manager.
+    department: str
+    manager: Optional[str] = None
+    enabled: bool
+
+
+@router.put("/modules/{business_id}")
+async def set_module(business_id: str, req: ModuleToggleRequest):
+    """Turn a department or a single manager on/off for this business."""
+    from backend.engines.business_blueprint import summary, DEPARTMENTS
+    from fastapi import HTTPException
+    if req.department not in DEPARTMENTS or req.department == "ceo":
+        raise HTTPException(status_code=400, detail=f"Unknown department '{req.department}'")
+    if req.manager and req.manager not in DEPARTMENTS[req.department]["managers"]:
+        raise HTTPException(status_code=400, detail=f"Unknown manager '{req.manager}'")
+
+    sb = get_supabase()
+    biz = sb.table("businesses").select("config,industry").eq("id", business_id).limit(1).execute().data
+    if not biz:
+        raise HTTPException(status_code=404, detail="Business not found")
+    config = biz[0].get("config") or {}
+    config.setdefault("industry", biz[0].get("industry"))
+    overrides = config.get("module_overrides") or {}
+
+    key = f"{req.department}.{req.manager}" if req.manager else req.department
+    overrides[key] = bool(req.enabled)
+    config["module_overrides"] = overrides
+
+    sb.table("businesses").update({"config": config}).eq("id", business_id).execute()
+    return {"updated": True, "key": key, "enabled": bool(req.enabled), "modules": summary(config)}

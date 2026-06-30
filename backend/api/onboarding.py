@@ -14,7 +14,21 @@ router = APIRouter()
 
 def _build_config(req: OnboardRequest) -> dict:
     """Assemble the business 'brain' config stored on businesses.config."""
+    from backend.engines.business_blueprint import (
+        profile_for_industry, default_modules_for_industry,
+    )
+    # Default module set based on the industry — owner can toggle later.
+    default_mods = default_modules_for_industry(req.industry)
+    module_overrides = {}
+    # Seed overrides so the resolved tree matches the chosen profile exactly,
+    # and the owner sees an explicit, editable starting point.
+    for dept, managers in default_mods.items():
+        for mkey, on in managers.items():
+            module_overrides[f"{dept}.{mkey}"] = bool(on)
     return {
+        "industry": req.industry,
+        "business_profile": profile_for_industry(req.industry),
+        "module_overrides": module_overrides,
         "website": req.website,
         "city": req.city,
         "state": req.state,

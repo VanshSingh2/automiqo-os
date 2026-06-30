@@ -2,50 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+  Automiqo OS — soothing admin theme.
+  Calm, airy light surface with soft indigo/teal accents and gentle depth.
+*/
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --radius: 0.5rem;
-  }
+    --bg: 222 36% 97%;          /* page background — soft cool white */
+    --surface: 0 0% 100%;       /* cards */
+    --surface-2: 220 33% 98%;   /* subtle panels */
+    --ink: 222 30% 18%;         /* primary text */
+    --ink-soft: 222 14% 42%;    /* secondary text */
+    --ink-faint: 222 12% 60%;   /* tertiary text */
+    --line: 222 24% 91%;        /* borders */
+    --brand: 243 75% 62%;       /* indigo */
+    --brand-soft: 243 100% 97%;
+    --teal: 172 66% 45%;
+    --amber: 38 92% 55%;
+    --rose: 350 80% 62%;
+    --green: 152 56% 45%;
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
+    --background: var(--bg);
+    --foreground: var(--ink);
+    --card: var(--surface);
+    --card-foreground: var(--ink);
+    --popover: var(--surface);
+    --popover-foreground: var(--ink);
+    --primary: var(--brand);
+    --primary-foreground: 0 0% 100%;
+    --secondary: var(--surface-2);
+    --secondary-foreground: var(--ink);
+    --muted: var(--surface-2);
+    --muted-foreground: var(--ink-soft);
+    --accent: var(--brand-soft);
+    --accent-foreground: var(--brand);
+    --destructive: var(--rose);
+    --destructive-foreground: 0 0% 100%;
+    --border: var(--line);
+    --input: var(--line);
+    --ring: var(--brand);
+    --radius: 0.9rem;
   }
 }
 
@@ -54,6 +50,44 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
+    background:
+      radial-gradient(1100px 600px at 12% -8%, hsl(243 90% 95%) 0%, transparent 55%),
+      radial-gradient(900px 520px at 100% 0%, hsl(172 70% 93%) 0%, transparent 50%),
+      hsl(var(--bg));
+    background-attachment: fixed;
+    min-height: 100vh;
   }
 }
+
+@layer components {
+  .glass-card {
+    @apply rounded-2xl border bg-white/80 backdrop-blur-sm;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px -12px rgba(16, 24, 40, 0.12);
+  }
+  .soft-card {
+    @apply rounded-2xl border bg-white;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 6px 20px -14px rgba(16, 24, 40, 0.15);
+  }
+  .nav-link {
+    @apply flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-500
+           transition-all hover:bg-indigo-50 hover:text-indigo-600;
+  }
+  .nav-link-active {
+    @apply bg-indigo-50 text-indigo-600 shadow-sm;
+  }
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+}
+
+/* gentle scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: hsl(222 16% 86%); border-radius: 999px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: hsl(222 16% 78%); }
+
+@keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.animate-fadein { animation: fadein 0.35s ease both; }
+
+@keyframes pulse-soft { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+.animate-pulse-soft { animation: pulse-soft 1.6s ease-in-out infinite; }

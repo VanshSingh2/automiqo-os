@@ -82,3 +82,84 @@ export async function healthCheck(): Promise<boolean> {
     return data.status === "ok";
   } catch { return false; }
 }
+
+
+// ── Team chat + backstage activity ─────────────────────────────────────────
+export type TeamMessage = {
+  id?: string;
+  from_agent: string;
+  from_role?: string;
+  to_agent?: string;
+  message: string;
+  category?: string;
+  urgency?: string;
+  created_at?: string;
+};
+
+export type ActivityItem = {
+  who: string;
+  action: string;
+  urgency?: string;
+  event_type?: string;
+  at?: string;
+};
+
+export async function getTeamChat(businessId: string): Promise<TeamMessage[]> {
+  try {
+    const res = await fetch(`${BASE}/team-chat/${businessId}?limit=80`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.messages || [];
+  } catch { return []; }
+}
+
+export async function postOwnerMessage(businessId: string, message: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE}/team-chat/${businessId}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+export async function getBackstage(businessId: string): Promise<ActivityItem[]> {
+  try {
+    const res = await fetch(`${BASE}/backstage/${businessId}?limit=100`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.activity || [];
+  } catch { return []; }
+}
+
+// ── Module blueprint ────────────────────────────────────────────────────────
+export type ManagerModule = { key: string; label: string; enabled: boolean };
+export type DeptModule = { key: string; label: string; enabled: boolean; managers: ManagerModule[] };
+export type ModuleSummary = { profile: string; departments: DeptModule[] };
+
+export async function getModules(businessId: string): Promise<ModuleSummary | null> {
+  try {
+    const res = await fetch(`${BASE}/modules/${businessId}`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch { return null; }
+}
+
+export async function setModule(
+  businessId: string,
+  department: string,
+  manager: string | null,
+  enabled: boolean
+): Promise<ModuleSummary | null> {
+  try {
+    const res = await fetch(`${BASE}/modules/${businessId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ department, manager, enabled }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.modules || null;
+  } catch { return null; }
+}

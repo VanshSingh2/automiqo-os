@@ -74,7 +74,7 @@ async def alert_dept(
         context:          Additional context dict
     """
     event_type = DEPT_EVENT_MAP.get(to_dept, "internal.alert")
-    await publish(business_id, event_type, {
+    event_id = await publish(business_id, event_type, {
         "from": from_dept,
         "message": message,
         "urgency": urgency,
@@ -84,6 +84,19 @@ async def alert_dept(
         "_internal": True,
         "_from": from_dept,
     }, source=f"{from_dept}_alert")
+
+    # Mirror into the human-readable team group chat (best-effort, never raises).
+    try:
+        from backend.events.agent_chat import post_team_message, agent_display
+        to_name, _ = agent_display(to_dept)
+        await post_team_message(
+            business_id, from_agent=from_dept,
+            message=f"@{to_name} {message}",
+            to_agent=to_name, category="alert", urgency=urgency,
+            related_event_id=event_id,
+        )
+    except Exception:
+        pass
 
 
 async def ask_dept(

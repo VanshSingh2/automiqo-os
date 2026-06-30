@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { fetchReports } from "@/lib/api";
 
 const BUSINESS_ID = process.env.NEXT_PUBLIC_BUSINESS_ID || "00000000-0000-0000-0000-000000000001";
@@ -25,26 +24,24 @@ export default function ReportsPage() {
   }, []);
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold text-white mb-6">Reports</h1>
-      {loading && <p className="text-gray-400">Loading reports...</p>}
+    <div className="mx-auto max-w-4xl p-6 lg:p-8">
+      <h1 className="text-2xl font-semibold tracking-tight text-slate-800">Reports</h1>
+      <p className="mb-6 mt-1 text-sm text-slate-500">Daily and weekly summaries from your AI team.</p>
+
+      {loading && <p className="text-sm text-slate-400">Loading reports…</p>}
       <div className="space-y-4">
         {reports.map((r) => (
-          <Card key={r.id} className="bg-[#1A1A2E] border-[#2A2A4E]">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-white text-sm font-medium">{r.report_date}</CardTitle>
-                <span className="text-xs text-blue-400 uppercase">{r.report_type}</span>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-gray-300">{r.summary || "No summary available"}</p>
-              <p className="text-xs text-gray-600 mt-2">{new Date(r.generated_at).toLocaleString()}</p>
-            </CardContent>
-          </Card>
+          <div key={r.id} className="soft-card animate-fadein p-5">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-slate-800">{r.report_date}</p>
+              <span className="pill bg-indigo-50 uppercase text-indigo-500">{r.report_type}</span>
+            </div>
+            <p className="mt-3 text-sm leading-relaxed text-slate-600">{r.summary || "No summary available"}</p>
+            <p className="mt-2 text-[11px] text-slate-300">{new Date(r.generated_at).toLocaleString()}</p>
+          </div>
         ))}
         {!loading && reports.length === 0 && (
-          <p className="text-gray-500 text-center py-8">No reports yet. Run morning briefing to generate the first one.</p>
+          <div className="soft-card py-12 text-center text-sm text-slate-400">No reports yet. Run the morning briefing to generate the first one.</div>
         )}
       </div>
     </div>

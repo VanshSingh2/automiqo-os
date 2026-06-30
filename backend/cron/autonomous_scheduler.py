@@ -61,6 +61,17 @@ async def _get_all_active_businesses() -> list[str]:
         return []
 
 
+async def _get_active_businesses_with_config() -> list[dict]:
+    """Return active businesses as [{'id':..., 'config':...}] for module gating."""
+    try:
+        sb = get_supabase()
+        result = sb.table("businesses").select("id,config").eq("active", True).execute()
+        return [{"id": str(r["id"]), "config": r.get("config") or {}} for r in (result.data or [])]
+    except Exception as e:
+        print(f"[scheduler] Could not fetch businesses: {e}")
+        return []
+
+
 async def _run_dept_loop(dept: str, fn_path: str, business_id: str):
     """Import and run a dept loop function."""
     module_path, fn_name = fn_path.rsplit(".", 1)
@@ -69,8 +80,21 @@ async def _run_dept_loop(dept: str, fn_path: str, business_id: str):
         module = importlib.import_module(module_path)
         fn = getattr(module, fn_name)
         result = await fn(business_id)
+        actions = result.get("actions_taken", 0)
+        queued = result.get("approvals_queued", 0)
         print(f"[scheduler][{dept.upper()}][{business_id[:8]}] done — "
-              f"{result.get('actions_taken',0)} actions, {result.get('approvals_queued',0)} queued for approval")
+              f"{actions} actions, {queued} queued for approval")
+        # Post a human-readable standup line into the team chat.
+        try:
+            from backend.events.agent_chat import post_team_message
+            if actions or queued:
+                msg = (f"Daily routine done — handled {actions} task(s) automatically"
+                       + (f" and queued {queued} for your approval." if queued else "."))
+            else:
+                msg = "Daily routine done — everything looks healthy, nothing needed action."
+            await post_team_message(business_id, dept, msg, category="standup")
+        except Exception:
+            pass
     except Exception as e:
         print(f"[scheduler][{dept.upper()}] Error: {e}")
 
@@ -83,19 +107,29 @@ async def _dept_scheduler(dept: str, target_hour_est: int, fn_path: str):
         wait = _seconds_until_next_hour(target_hour_est, now)
         await asyncio.sleep(wait)
 
-        businesses = await _get_all_active_businesses()
+        businesses = await _get_active_businesses_with_config()
         if not businesses:
             continue
 
-        print(f"[scheduler] ⏰ {dept.upper()} daily loop firing for {len(businesses)} business(es)")
+        # Only fire for businesses where THIS department is enabled in their blueprint.
+        from backend.engines.business_blueprint import is_dept_enabled
+        active = [b for b in businesses if is_dept_enabled(b["config"], dept)]
+        skipped = len(businesses) - len(active)
+        if not active:
+            print(f"[scheduler] {dept.upper()} not enabled for any business — skipping")
+            await asyncio.sleep(23 * 3600)
+            continue
+
+        note = f" ({skipped} skipped: module off)" if skipped else ""
+        print(f"[scheduler] ⏰ {dept.upper()} daily loop firing for {len(active)} business(es){note}")
         await asyncio.gather(
-            *[_run_dept_loop(dept, fn_path, bid) for bid in businesses],
+            *[_run_dept_loop(dept, fn_path, b["id"]) for b in active],
             return_exceptions=True,
         )
 
         # Also publish dept.work event for any event-driven subscribers
-        for bid in businesses:
-            await publish(bid, f"dept.work.{dept}", {"triggered_by": "scheduler"}, source="scheduler")
+        for b in active:
+            await publish(b["id"], f"dept.work.{dept}", {"triggered_by": "scheduler"}, source="scheduler")
 
         # Sleep 23h to avoid double-firing
         await asyncio.sleep(23 * 3600)
@@ -116,6 +150,17 @@ async def _ceo_standup_scheduler():
                 "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
                 "triggered_by": "scheduler",
             }, source="scheduler")
+            # CEO opens the team chat for the day.
+            try:
+                from backend.events.agent_chat import post_team_message
+                await post_team_message(
+                    bid, "ceo",
+                    "Good morning team — daily standup. Each department, please review "
+                    "yesterday and share today's focus. Flag anything that needs the owner.",
+                    category="standup",
+                )
+            except Exception:
+                pass
 
         await asyncio.sleep(23 * 3600)
 

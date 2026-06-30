@@ -45,3 +45,16 @@ export async function POST(req: NextRequest, { params }: { params: { path: strin
 
   return NextResponse.json({ error: "Unsupported content type" }, { status: 400 });
 }
+
+export async function PUT(req: NextRequest, { params }: { params: { path: string[] } }) {
+  const path = params.path.join("/");
+  const url = `${BACKEND}/${path}`;
+  const body = await req.json();
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  return NextResponse.json(data, { status: res.status });
+}
