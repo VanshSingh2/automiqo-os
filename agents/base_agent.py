@@ -1,6 +1,40 @@
+import asyncio
+import os
 from abc import ABC, abstractmethod
 from uuid import UUID
 from shared.schemas import AgentResponse
+
+
+class ResilientLLM:
+    """
+    Thin wrapper adding retry-with-backoff around an LLM's ainvoke (review
+    finding S2). Transparent: any other attribute/method is delegated to the
+    wrapped model, so agents use it exactly like the underlying ChatOpenAI.
+    """
+    def __init__(self, llm, retries: int | None = None):
+        self._llm = llm
+        try:
+            self._retries = retries if retries is not None else int(os.getenv("LLM_MAX_RETRIES", "3"))
+        except ValueError:
+            self._retries = 3
+
+    async def ainvoke(self, *args, **kwargs):
+        delay = 0.5
+        last_exc = None
+        for attempt in range(1, self._retries + 1):
+            try:
+                return await self._llm.ainvoke(*args, **kwargs)
+            except Exception as e:  # transient provider/network errors
+                last_exc = e
+                if attempt >= self._retries:
+                    break
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 8)
+        raise last_exc
+
+    def __getattr__(self, name):
+        # Delegate everything else (bind_tools, invoke, model attrs, …).
+        return getattr(self._llm, name)
 
 
 class BaseAgent(ABC):
@@ -25,16 +59,18 @@ class BaseAgent(ABC):
         model_str = os.getenv("DEPT_MODEL", "openai/gpt-4o-mini")
         provider, _, model = model_str.partition("/")
         if provider == "nvidia":
-            return ChatOpenAI(
+            _llm = ChatOpenAI(
                 model=model or "meta/llama-3.1-8b-instruct",
                 api_key=os.getenv("NVIDIA_API_KEY", ""),
                 base_url="https://integrate.api.nvidia.com/v1",
             )
         elif provider == "anthropic":
             from langchain_anthropic import ChatAnthropic
-            return ChatAnthropic(model=model or "claude-haiku-4-5-20251001", api_key=os.getenv("ANTHROPIC_API_KEY", ""), max_tokens=2048)
+            _llm = ChatAnthropic(model=model or "claude-haiku-4-5-20251001", api_key=os.getenv("ANTHROPIC_API_KEY", ""), max_tokens=2048)
         else:
-            return ChatOpenAI(model=model or "gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY", ""))
+            _llm = ChatOpenAI(model=model or "gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY", ""))
+        # Wrap with retry/backoff so transient provider failures don't kill loops/pulses.
+        return ResilientLLM(_llm)
 
     async def consult_specialist(self, specialist: str, task: str, extra_context: dict = {}) -> str:
         """Consult a specialist expert. Available to all agents."""

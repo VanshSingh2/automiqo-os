@@ -1,11 +1,13 @@
 import os
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 load_dotenv()
+
+from backend.auth.deps import require_auth
 
 from backend.api.health import router as health_router
 from backend.api.onboarding import router as onboarding_router
@@ -27,6 +29,17 @@ from backend.api.webhooks import router as webhooks_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fail-fast / warn on weak secrets (review finding S7).
+    _jwt = os.getenv("JWT_SECRET", "")
+    _weak = (not _jwt) or _jwt.startswith("change-me") or len(_jwt) < 32
+    if _weak:
+        msg = "[security] JWT_SECRET is missing/weak — set a strong 32+ char secret."
+        if os.getenv("APP_ENV") == "production" and os.getenv("REQUIRE_AUTH", "false").lower() == "true":
+            raise RuntimeError(msg + " Refusing to start in production with auth enabled.")
+        print("⚠️  " + msg)
+    if os.getenv("REQUIRE_AUTH", "false").lower() != "true":
+        print("⚠️  [security] REQUIRE_AUTH=false — business endpoints are OPEN. Set REQUIRE_AUTH=true for production.")
+
     from backend.dispatcher.queue import worker_loop
     from backend.events.worker import event_worker_loop
     from backend.cron.autonomous_scheduler import start_autonomous_scheduler
@@ -64,21 +77,25 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
-app.include_router(onboarding_router)
 app.include_router(auth_router)
-app.include_router(approvals_router)
-app.include_router(chat_router)
-app.include_router(reports_router)
-app.include_router(specialists_router)
-app.include_router(memory_router)
-app.include_router(leads_router)
-app.include_router(qa_router)
-app.include_router(test_router)
-app.include_router(growth_router)
-app.include_router(engines_router)
-app.include_router(business_modules_router)
-app.include_router(team_chat_router)
 app.include_router(webhooks_router)
+
+# Protected business routers — require a valid token + tenant match when
+# REQUIRE_AUTH=true (no-op in dev). health/auth/webhooks stay open by design.
+_protected = Depends(require_auth)
+app.include_router(onboarding_router, dependencies=[_protected])
+app.include_router(approvals_router, dependencies=[_protected])
+app.include_router(chat_router, dependencies=[_protected])
+app.include_router(reports_router, dependencies=[_protected])
+app.include_router(specialists_router, dependencies=[_protected])
+app.include_router(memory_router, dependencies=[_protected])
+app.include_router(leads_router, dependencies=[_protected])
+app.include_router(qa_router, dependencies=[_protected])
+app.include_router(test_router, dependencies=[_protected])
+app.include_router(growth_router, dependencies=[_protected])
+app.include_router(engines_router, dependencies=[_protected])
+app.include_router(business_modules_router, dependencies=[_protected])
+app.include_router(team_chat_router, dependencies=[_protected])
 
 
 def _check_cron_secret(x_cron_secret: str = Header(None)):

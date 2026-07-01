@@ -46,7 +46,13 @@ async def recall_block(business_id: str, agent: str, query: str, limit: int = 4)
     for f in (facts or [])[:limit]:
         line = _line_from(f)
         if line:
-            lines.append(f"- {line[:200]}")
+            # Recalled memory may contain externally-derived content — treat as untrusted.
+            try:
+                from backend.security.sanitize import sanitize_external
+                line = sanitize_external(line, max_len=200)
+            except Exception:
+                line = line[:200]
+            lines.append(f"- {line}")
     if not lines:
         return ""
     return "\n\nWhat you remember from recent days:\n" + "\n".join(lines)

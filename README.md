@@ -37,15 +37,17 @@ cd frontend && npm install && npm run dev
 ```
 Owner Chat
     ↓
-CEO Agent (Claude Sonnet) ← LangGraph
+CEO Agent (GPT-4.1 by default — configurable via CEO_MODEL) ← LangGraph
     ↓
-Department Agents (GPT-4o-mini): COO | CRO | CMO | CFO | Customer Success
+Department Agents (GPT-4o-mini): COO | CRO | CMO | CFO | CTO | Customer Success | Learning
+    ↓
+Managers (32 total) + Manager autonomy pulses
     ↓
 Task Dispatcher → Redis Queue
     ↓
-n8n Workflows (42 automations): SMS | Calendar | CRM | Reports
+n8n Workflows (100+ automations): SMS | Calendar | CRM | Reports | Campaigns
     ↓
-Supabase (all state) + Twilio + Vapi + Google Calendar + Stripe
+Supabase (all state, pgvector memory) + Twilio/Telnyx + Vapi + Cal.com + Stripe
 ```
 
 ## API Endpoints
@@ -59,10 +61,16 @@ Supabase (all state) + Twilio + Vapi + Google Calendar + Stripe
 - `POST /approvals/{id}/approve` — Approve recommendation
 - `POST /approvals/{id}/reject` — Reject recommendation
 
-## n8n Workflows (10 built, 42 total)
+## n8n Workflows (100+ automations)
 
 Import JSONs from `/n8n/` into your n8n instance.
 Set up credentials: `Supabase_Main` and `Twilio_Production`.
+
+## Deployment
+
+See **[DEPLOYMENT.md](DEPLOYMENT.md)** for a step-by-step VPS guide, and
+**[docs/CODE_REVIEW_AND_ROADMAP.md](docs/CODE_REVIEW_AND_ROADMAP.md)** for the
+production-hardening checklist.
 
 ## Tests
 ```bash

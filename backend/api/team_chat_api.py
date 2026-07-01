@@ -5,9 +5,11 @@ Team Chat API — powers the owner-facing group chat + backstage activity feed.
   POST /team-chat/{business_id}      → owner posts a message into the group chat
   GET  /backstage/{business_id}      → backend activity translated to plain English
 """
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from backend.memory.supabase_client import get_supabase
+from backend.security.rate_limit import rate_limit
+from backend.security.spend_guard import within_budget
 
 router = APIRouter(tags=["team-chat"])
 
@@ -106,7 +108,7 @@ class AskMember(BaseModel):
     message: str
 
 
-@router.post("/team/{business_id}/ask")
+@router.post("/team/{business_id}/ask", dependencies=[Depends(rate_limit("ask", per_minute=15))])
 async def ask_member(business_id: str, body: AskMember):
     """
     Owner chats 1:1 with a team member. Each member answers in their own voice
@@ -119,6 +121,14 @@ async def ask_member(business_id: str, body: AskMember):
 
     agent_key = body.agent_key
     name = member_display(agent_key)
+
+    # Daily spend circuit breaker (review finding B2).
+    allowed, spent, cap = await within_budget(business_id)
+    if not allowed:
+        return {"member": name,
+                "reply": (f"(The team's paused on-demand AI for today — daily budget "
+                          f"of ${cap:.2f} reached at ${spent:.2f}. Raise DAILY_AI_SPEND_CAP_USD "
+                          f"or try tomorrow.)")}
 
     # Record the owner's message in the DM thread.
     await post_team_message(business_id, "owner", body.message, to_agent=name, channel="dm")

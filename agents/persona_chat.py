@@ -62,6 +62,13 @@ class PersonaChatAgent(BaseAgent):
             memory = await self.memory_context(question)
         except Exception:
             memory = ""
+        # Recalled memory may contain externally-derived content — wrap as untrusted data.
+        if memory:
+            try:
+                from backend.security.sanitize import wrap_untrusted
+                memory = wrap_untrusted(memory, label="memory")
+            except Exception:
+                pass
         memory = memory or "(nothing specific yet)"
 
         system = _SYSTEM_TEMPLATE.format(
