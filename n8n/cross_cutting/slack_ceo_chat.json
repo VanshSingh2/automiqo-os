@@ -1,0 +1,20 @@
+{
+  "name": "Slack CEO Chat",
+  "active": true,
+  "nodes": [
+    {"id":"slack-trigger-001","name":"Slack Trigger","type":"n8n-nodes-base.slackTrigger","typeVersion":1,"position":[240,300],"webhookId":"slack-ceo-chat","credentials":{"slackApi":{"id":"slack_automiqo","name":"Slack_Automiqo"}},"parameters":{"trigger":["message"],"channelId":"={{ $env.SLACK_CEO_CHANNEL_ID }}"}},
+    {"id":"filter-bot-001","name":"Ignore Bot Messages","type":"n8n-nodes-base.if","typeVersion":2,"position":[460,300],"parameters":{"conditions":{"conditions":[{"id":"f1","leftValue":"={{ $json.bot_id }}","rightValue":"","operator":{"type":"string","operation":"notExists"}}]}}},
+    {"id":"extract-001","name":"Extract Message","type":"n8n-nodes-base.set","typeVersion":3,"position":[680,220],"parameters":{"mode":"manual","assignments":{"assignments":[{"id":"m1","name":"business_id","value":"={{ JSON.parse($env.SLACK_BUSINESS_ID_MAP)[$json.channel] }}","type":"string"},{"id":"m2","name":"message","value":"={{ $json.text }}","type":"string"},{"id":"m3","name":"thread_ts","value":"={{ $json.thread_ts || $json.ts }}","type":"string"},{"id":"m4","name":"channel","value":"={{ $json.channel }}","type":"string"}]}}},
+    {"id":"call-ceo-001","name":"Call CEO Chat API","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[900,220],"parameters":{"method":"POST","url":"={{ $env.BACKEND_URL }}/chat","sendBody":true,"bodyParameters":{"parameters":[{"name":"business_id","value":"={{ $('Extract Message').item.json.business_id }}"},{"name":"message","value":"={{ $('Extract Message').item.json.message }}"}]},"options":{"response":{"response":{"responseFormat":"text"}}}}},
+    {"id":"parse-sse-001","name":"Parse Streamed Response","type":"n8n-nodes-base.code","typeVersion":2,"position":[1120,220],"parameters":{"jsCode":"const raw=$input.first().json.data||$input.first().json;const text=typeof raw==='string'?raw:JSON.stringify(raw);const lines=text.split('\\n').filter(l=>l.startsWith('data: '));let full='';for(const line of lines){try{const p=JSON.parse(line.replace('data: ',''));if(p.chunk)full+=p.chunk;}catch(e){}}return[{json:{reply:full.trim()||'No response generated.'}}];"}},
+    {"id":"post-slack-001","name":"Post Reply to Slack","type":"n8n-nodes-base.slack","typeVersion":2.2,"position":[1340,220],"credentials":{"slackApi":{"id":"slack_automiqo","name":"Slack_Automiqo"}},"parameters":{"resource":"message","operation":"post","channelId":"={{ $('Extract Message').item.json.channel }}","text":"={{ $('Parse Streamed Response').item.json.reply }}","otherOptions":{"thread_ts":"={{ $('Extract Message').item.json.thread_ts }}"}}}
+  ],
+  "connections":{
+    "Slack Trigger":{"main":[[{"node":"Ignore Bot Messages","type":"main","index":0}]]},
+    "Ignore Bot Messages":{"main":[[{"node":"Extract Message","type":"main","index":0}],[]]},
+    "Extract Message":{"main":[[{"node":"Call CEO Chat API","type":"main","index":0}]]},
+    "Call CEO Chat API":{"main":[[{"node":"Parse Streamed Response","type":"main","index":0}]]},
+    "Parse Streamed Response":{"main":[[{"node":"Post Reply to Slack","type":"main","index":0}]]}
+  },
+  "tags":["cross_cutting","slack","company-os"]
+}

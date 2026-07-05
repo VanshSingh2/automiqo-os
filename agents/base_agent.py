@@ -112,9 +112,28 @@ class BaseAgent(ABC):
                 summary=parsed.get("summary", clean),
                 metrics=parsed.get("metrics", {}),
                 recommendations=parsed.get("recommendations", []),
+                confidence=float(parsed.get("confidence", 0.85)),
+                needs_clarification=bool(parsed.get("needs_clarification", False)),
+                clarifying_question=parsed.get("clarifying_question"),
             )
         except Exception:
-            return AgentResponse(status="ok", summary=content.strip())
+            return AgentResponse(status="ok", summary=content.strip(), confidence=0.5)
+
+    async def _log_if_low_confidence(self, response, question: str) -> None:
+        if response.confidence >= 0.5:
+            return
+        try:
+            from backend.memory.supabase_client import get_supabase
+            get_supabase().table("reflections").insert({
+                "business_id": str(self.business_id),
+                "agent_name": self.__class__.__name__,
+                "what_happened": f"Low confidence response to: {question[:200]}",
+                "why": response.summary[:300],
+                "confidence": response.confidence,
+                "mistake": False,
+            }).execute()
+        except Exception:
+            pass
 
     async def search_knowledge(self, query: str, category: str = None, limit: int = 5) -> list:
         """Search business knowledge base (FAQs, policies, SOPs) by semantic meaning."""

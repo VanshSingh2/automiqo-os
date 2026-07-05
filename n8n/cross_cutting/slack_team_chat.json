@@ -1,0 +1,28 @@
+{
+  "name": "Slack Team Chat",
+  "active": true,
+  "nodes": [
+    {"id":"slack-trigger-002","name":"Slack Trigger","type":"n8n-nodes-base.slackTrigger","typeVersion":1,"position":[240,300],"credentials":{"slackApi":{"id":"slack_automiqo","name":"Slack_Automiqo"}},"parameters":{"trigger":["message"],"channelId":"={{ $env.SLACK_TEAM_CHANNEL_ID }}"}},
+    {"id":"filter-bot-002","name":"Ignore Bot Messages","type":"n8n-nodes-base.if","typeVersion":2,"position":[460,300],"parameters":{"conditions":{"conditions":[{"id":"f2","leftValue":"={{ $json.bot_id }}","rightValue":"","operator":{"type":"string","operation":"notExists"}}]}}},
+    {"id":"detect-target-001","name":"Detect DM Target","type":"n8n-nodes-base.code","typeVersion":2,"position":[680,220],"parameters":{"jsCode":"const text=$input.first().json.text||'';const managers=['ceo','coo','cro','cmo','cfo','cto','csd','learning'];const match=text.toLowerCase().match(/@(\\w+)/);let target='team',cleanMessage=text;if(match&&managers.includes(match[1])){target=match[1];cleanMessage=text.replace(match[0],'').trim();}return[{json:{...$input.first().json,target,clean_message:cleanMessage}}];"}},
+    {"id":"extract-002","name":"Extract Message","type":"n8n-nodes-base.set","typeVersion":3,"position":[900,220],"parameters":{"mode":"manual","assignments":{"assignments":[{"id":"m5","name":"business_id","value":"={{ JSON.parse($env.SLACK_BUSINESS_ID_MAP)[$json.channel] }}","type":"string"},{"id":"m6","name":"message","value":"={{ $json.clean_message }}","type":"string"},{"id":"m7","name":"target","value":"={{ $json.target }}","type":"string"},{"id":"m8","name":"thread_ts","value":"={{ $json.thread_ts || $json.ts }}","type":"string"},{"id":"m9","name":"channel","value":"={{ $json.channel }}","type":"string"}]}}},
+    {"id":"route-target-001","name":"Team or DM?","type":"n8n-nodes-base.if","typeVersion":2,"position":[1120,220],"parameters":{"conditions":{"conditions":[{"id":"r1","leftValue":"={{ $('Extract Message').item.json.target }}","rightValue":"team","operator":{"type":"string","operation":"equals"}}]}}},
+    {"id":"post-team-001","name":"Post to Team Chat","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1340,140],"parameters":{"method":"POST","url":"={{ $env.BACKEND_URL }}/team-chat/{{ $('Extract Message').item.json.business_id }}","sendBody":true,"bodyParameters":{"parameters":[{"name":"message","value":"={{ $('Extract Message').item.json.message }}"},{"name":"to_agent","value":"team"}]}}},
+    {"id":"post-dm-001","name":"Post DM to Manager","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1340,300],"parameters":{"method":"POST","url":"={{ $env.BACKEND_URL }}/team-chat/{{ $('Extract Message').item.json.business_id }}/dm/{{ $('Extract Message').item.json.target }}","sendBody":true,"bodyParameters":{"parameters":[{"name":"message","value":"={{ $('Extract Message').item.json.message }}"}]}}},
+    {"id":"wait-001","name":"Wait 2s","type":"n8n-nodes-base.wait","typeVersion":1.1,"position":[1560,220],"parameters":{"amount":2,"unit":"seconds"}},
+    {"id":"fetch-latest-001","name":"Fetch Latest Reply","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[1780,220],"parameters":{"method":"GET","url":"={{ $env.BACKEND_URL }}/team-chat/{{ $('Extract Message').item.json.business_id }}","sendQuery":true,"queryParameters":{"parameters":[{"name":"limit","value":"3"}]}}},
+    {"id":"post-slack-002","name":"Post Reply to Slack","type":"n8n-nodes-base.slack","typeVersion":2.2,"position":[2000,220],"credentials":{"slackApi":{"id":"slack_automiqo","name":"Slack_Automiqo"}},"parameters":{"resource":"message","operation":"post","channelId":"={{ $('Extract Message').item.json.channel }}","text":"={{ $json.messages[$json.messages.length - 1].message }}","otherOptions":{"thread_ts":"={{ $('Extract Message').item.json.thread_ts }}"}}}
+  ],
+  "connections":{
+    "Slack Trigger":{"main":[[{"node":"Ignore Bot Messages","type":"main","index":0}]]},
+    "Ignore Bot Messages":{"main":[[{"node":"Detect DM Target","type":"main","index":0}],[]]},
+    "Detect DM Target":{"main":[[{"node":"Extract Message","type":"main","index":0}]]},
+    "Extract Message":{"main":[[{"node":"Team or DM?","type":"main","index":0}]]},
+    "Team or DM?":{"main":[[{"node":"Post to Team Chat","type":"main","index":0}],[{"node":"Post DM to Manager","type":"main","index":0}]]},
+    "Post to Team Chat":{"main":[[{"node":"Wait 2s","type":"main","index":0}]]},
+    "Post DM to Manager":{"main":[[{"node":"Wait 2s","type":"main","index":0}]]},
+    "Wait 2s":{"main":[[{"node":"Fetch Latest Reply","type":"main","index":0}]]},
+    "Fetch Latest Reply":{"main":[[{"node":"Post Reply to Slack","type":"main","index":0}]]}
+  },
+  "tags":["cross_cutting","slack","company-os"]
+}

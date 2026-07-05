@@ -25,6 +25,7 @@ from backend.api.engines_api import router as engines_router
 from backend.api.business_modules_api import router as business_modules_router
 from backend.api.team_chat_api import router as team_chat_router
 from backend.api.webhooks import router as webhooks_router
+from backend.api.disagreements import router as disagreements_router
 
 
 @asynccontextmanager
@@ -79,6 +80,7 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(webhooks_router)
+app.include_router(disagreements_router)
 
 # Protected business routers — require a valid token + tenant match when
 # REQUIRE_AUTH=true (no-op in dev). health/auth/webhooks stay open by design.

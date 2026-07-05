@@ -17,3 +17,10 @@ async def get_metrics(business_id: UUID):
     from backend.memory.company import get_company_state
     state = await get_company_state(business_id)
     return state
+
+
+@router.get("/patterns/{business_id}")
+async def get_detected_patterns(business_id: UUID):
+    from backend.engines.pattern_detector import detect_repeated_failures
+    patterns = await detect_repeated_failures(str(business_id))
+    return {"patterns": patterns}

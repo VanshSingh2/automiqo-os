@@ -54,6 +54,9 @@ async def run_nightly_learning():
                     "priority": "normal",
                     "status": "pending",
                 }).execute()
+            from backend.engines.pattern_detector import create_pattern_recommendations
+            pattern_result = await create_pattern_recommendations(str(bid))
+            print(f"[{bid}] Pattern detection: {pattern_result}")
         except Exception as e:
             print(f"Nightly learning failed for {biz['id']}: {e}")
 

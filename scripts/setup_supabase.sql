@@ -590,3 +590,27 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='conversations' AND policyname='service_role_all') THEN
     CREATE POLICY "service_role_all" ON conversations FOR ALL USING (true); END IF;
 END $$;
+
+-- Disagreements (constructive agent disagreement tracking)
+CREATE TABLE IF NOT EXISTS disagreements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  disagreeing_agent TEXT NOT NULL,
+  directive_from TEXT NOT NULL,
+  directive_summary TEXT,
+  concern TEXT NOT NULL,
+  alternative_suggestion TEXT,
+  severity TEXT DEFAULT 'moderate',
+  status TEXT DEFAULT 'raised',
+  owner_response TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ
+);
+ALTER TABLE disagreements ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "service_role_all" ON disagreements FOR ALL TO service_role USING (true) WITH CHECK (true);
+CREATE INDEX IF NOT EXISTS disagreements_business_status ON disagreements(business_id, status);
+
+-- Slack integration
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS slack_ceo_channel_id TEXT;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS slack_team_channel_id TEXT;
+ALTER TABLE businesses ADD COLUMN IF NOT EXISTS slack_enabled BOOLEAN DEFAULT false;

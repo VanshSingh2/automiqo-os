@@ -40,6 +40,9 @@ class AgentResponse(BaseModel):
     recommendations: list[str] = Field(default_factory=list)
     tasks_to_dispatch: list[TaskRequest] = Field(default_factory=list)
     summary: str = ""
+    confidence: float = 0.85
+    needs_clarification: bool = False
+    clarifying_question: Optional[str] = None
 
 
 class BusinessConfig(BaseModel):
