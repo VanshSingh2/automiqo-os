@@ -128,16 +128,16 @@ def make_ceo_tools(business_id: UUID):
             "status": "queued",
         }).execute()
         task_id = result.data[0]["id"] if result.data else None
-        # Also enqueue to Redis for immediate execution
+        # Fire the actual workflow through the policy gate (dispatch_action)
+        # instead of enqueuing directly, so approval-required workflows aren't
+        # auto-executed. The delegation task record above is preserved.
         try:
-            from backend.dispatcher.queue import enqueue_task
-            await enqueue_task({
-                "task_id": str(task_id),
-                "business_id": str(business_id),
-                "workflow": workflow,
-                "parameters": parameters,
-                "priority": "high",
-            })
+            from backend.events.handlers import dispatch_action
+            await dispatch_action(
+                str(business_id), workflow,
+                {**(parameters or {}), "task_description": task},
+                reason=f"CEO delegated to {department}",
+            )
         except Exception:
             pass
         return {"task_id": str(task_id), "department": department, "workflow": workflow, "queued": True}
@@ -162,27 +162,20 @@ def make_ceo_tools(business_id: UUID):
     async def dispatch_workflow_directly(workflow: str, parameters: dict = {}, priority: str = "high") -> dict:
         """Immediately dispatch an n8n workflow without creating a full plan.
         Use for single urgent actions: send SMS, book appointment, scrape leads, etc.
+
+        Routes through the same policy gate as the autonomous path (dispatch_action),
+        which either auto-fires whitelisted actions or queues a recommendation for
+        owner approval. The CEO no longer bypasses approval by enqueuing directly.
         """
-        from backend.memory.supabase_client import get_supabase
-        from backend.dispatcher.queue import enqueue_task
-        sb = get_supabase()
-        result = sb.table("tasks").insert({
-            "business_id": str(business_id),
-            "created_by": "ceo_direct",
-            "workflow": workflow,
-            "parameters": parameters,
-            "priority": priority,
-            "status": "queued",
-        }).execute()
-        task_id = result.data[0]["id"] if result.data else "unknown"
-        await enqueue_task({
-            "task_id": str(task_id),
-            "business_id": str(business_id),
-            "workflow": workflow,
-            "parameters": parameters,
-            "priority": priority,
-        })
-        return {"dispatched": True, "task_id": str(task_id), "workflow": workflow}
+        try:
+            from backend.events.handlers import dispatch_action
+            await dispatch_action(
+                str(business_id), workflow, parameters or {},
+                reason="CEO direct dispatch",
+            )
+            return {"dispatched": True, "workflow": workflow, "routed_via": "policy_gate"}
+        except Exception as e:
+            return {"dispatched": False, "workflow": workflow, "error": str(e)}
 
     @tool
     async def scrape_leads(query: str, location: str, count: int = 50, industry: str = "med spa") -> dict:

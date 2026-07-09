@@ -2,7 +2,10 @@
   "name": "Run Regression Tests",
   "nodes": [
     {
-      "parameters": {},
+      "parameters": {
+        "path": "run_regression_tests",
+        "httpMethod": "POST"
+      },
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,

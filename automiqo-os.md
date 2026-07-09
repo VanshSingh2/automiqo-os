@@ -195,11 +195,96 @@ Point each provider's webhook at your domain (routed by nginx to the backend):
 | Cal.com  | `https://<your-domain>/webhooks/appointment`  |
 
 > **Security note:** these endpoints do not yet verify provider signatures
-> (see §11). Add signature verification before going live with real traffic.
+> (see §12). Add signature verification before going live with real traffic.
 
 ---
 
-## 9. Onboard your first business
+## 9. Connecting Slack (talk to your AI team from Slack)
+
+You can chat with the CEO, any of the 7 department heads, or any of the 32
+managers straight from Slack — they reply *in character* right in the channel.
+
+> **Creating Slack channels is not enough.** Channels are just rooms; they
+> carry no credentials. To let the backend read messages and post replies you
+> must create a **Slack App**, which gives you the two secrets the backend
+> needs:
+>
+> - **`SLACK_BOT_TOKEN`** (`xoxb-…`) — lets the bot *post* replies.
+> - **`SLACK_SIGNING_SECRET`** — lets the backend *verify* that inbound events
+>   really came from Slack.
+
+### What the backend already does
+
+- **Endpoint:** `POST /webhooks/slack/events` (in `backend/api/slack.py`),
+  registered **without auth** like the other webhook routers — Slack
+  authenticates itself by signing each request, which the endpoint verifies
+  against `SLACK_SIGNING_SECRET` (with a 5-minute replay guard). It also
+  auto-answers Slack's one-time URL-verification handshake and acks fast.
+- **Routing — how a message finds the right team member:**
+  1. **Explicit prefix** — an `@name` or `name:` prefix matching any member,
+     department, or manager (e.g. `@cfo what's our runway?`,
+     `@Inventory Manager reorder gloves`, `cmo: draft a promo`). Matching is
+     case-insensitive against member names, keys, and department-head names.
+  2. **Per-channel map** — `businesses.config.slack_agent_map`, a
+     `{channel_id: agent_key}` mapping, so a whole channel routes to one agent.
+  3. **Default** — the **CEO**, if nothing above matches.
+- The chosen **`PersonaChatAgent`** answers in character, and the reply is
+  posted back to the same channel/thread. Bot messages and Slack retries are
+  ignored to prevent reply loops and duplicates.
+
+### Step-by-step setup
+
+1. Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App**
+   → **From scratch** → name it and pick your workspace.
+2. **Basic Information** → **App Credentials** → copy the **Signing Secret**
+   into `SLACK_SIGNING_SECRET`.
+3. **OAuth & Permissions** → **Bot Token Scopes**, add:
+   - `chat:write`, `app_mentions:read`, `channels:history`, `channels:read`
+   - (add `groups:history` for private channels; `im:history` + `im:write`
+     for DMs)
+
+   Then **Install to Workspace** → copy the **Bot User OAuth Token**
+   (`xoxb-…`) into `SLACK_BOT_TOKEN`.
+4. **Event Subscriptions** → **Enable Events** → set the **Request URL** to
+   `https://<your-domain>/webhooks/slack/events` (the endpoint auto-answers
+   Slack's verification handshake, so it should turn green). Under **Subscribe
+   to bot events**, add: `app_mention` and `message.channels`.
+5. **Invite the bot to your channels** — in Slack, run `/invite @YourApp` in
+   `#automiqo-ceo` and `#automiqo-team`.
+6. Put `SLACK_BOT_TOKEN` + `SLACK_SIGNING_SECRET` in `.env` and restart the
+   backend.
+
+### Mapping your channels
+
+Get each channel's ID (in Slack: **View channel details** → the ID is at the
+bottom of the panel), then set `businesses.config.slack_agent_map`, e.g.:
+
+```json
+{
+  "slack_agent_map": {
+    "C0ABC111CEO": "ceo",
+    "C0ABC222TEAM": "ceo"
+  }
+}
+```
+
+Here the `#automiqo-ceo` channel id → `"ceo"` and the `#automiqo-team` channel
+id → `"ceo"`. In `#automiqo-team`, `@`-mention a specific manager to reach
+them (e.g. `@Inventory Manager …`); with no mention it falls back to the CEO.
+
+### Gotchas
+
+- **Slack must reach the backend over public HTTPS.** For local testing, run a
+  tunnel (e.g. `ngrok` or `cloudflared`) and use the tunnel's HTTPS URL as the
+  Request URL — Slack will not call `localhost`.
+- **Pick ONE Slack path.** There are two ways messages can flow: this backend
+  endpoint **and** the n8n `slack_ceo_chat` / `slack_team_chat` workflows.
+  Enabling both causes **double replies** — use only one. The backend endpoint
+  is recommended.
+
+---
+
+## 10. Onboard your first business
 
 The UI loads the tenant in `NEXT_PUBLIC_BUSINESS_ID`. Create a business via the
 onboarding endpoint (or the dashboard onboarding page):
@@ -215,7 +300,7 @@ restart the frontend.
 
 ---
 
-## 10. Operating it
+## 11. Operating it
 
 ```bash
 # Logs
@@ -239,7 +324,7 @@ Cost control: `DAILY_AI_SPEND_CAP_USD` caps AI spend per business/day, and
 
 ---
 
-## 11. Production-readiness checklist
+## 12. Production-readiness checklist
 
 Already in place:
 - [x] JWT auth + per-tenant ownership guard (enable with `REQUIRE_AUTH=true`)
@@ -265,7 +350,7 @@ Before real/paying traffic — **do these**:
 
 ---
 
-## 12. How close is this to a human-run organization?
+## 13. How close is this to a human-run organization?
 
 **Structurally, very close; operationally, ~70–80% of the way.** What already
 maps to a real company:
@@ -292,4 +377,60 @@ What a human org still has that this doesn't yet:
 
 Close those four (senses, accountability, safe hands, cross-checking) and you
 move from "impressive autonomous demo" to "trustworthy autonomous org." The
-§11 checklist is exactly that path.
+§12 checklist is exactly that path.
+
+
+---
+
+## 14. How autonomous is this today, and the path to a fully self-running org
+
+**Honest read: structurally it already resembles a real company; operationally
+it's roughly 70–85% of the way to a *trustworthy* fully-autonomous org.**
+
+What's already company-like:
+
+- **Real org chart:** CEO → 7 department heads → 32 managers, each with a
+  scoped prompt, schedule, and remit.
+- **Event-driven proactivity:** agents act on a clock and on business events,
+  not only when prompted.
+- **Specialist consulting:** managers consult expert specialists before
+  deciding.
+- **Human-approval gates:** high-risk actions queue for owner sign-off.
+- **Layered memory:** Mem0 + pgvector let agents learn from past outcomes.
+
+"100% autonomous" is a **maturity journey, not a single switch** — and the
+human owner-approval layer is a deliberate **feature (safety)**, not a gap.
+
+### Phased roadmap to "100%"
+
+| Group | Item | Status |
+|-------|------|--------|
+| **Senses** (reliable input) | Webhook signature verification | Done |
+| | Multi-tenant inbound routing by phone number | Planned |
+| | Inbound email intake | Planned |
+| **Accountability** | Structured logging with a per-run `trace_id` | Partial |
+| | Per-agent cost / latency / quality metrics | Partial |
+| | Audit-trail UI | Planned |
+| **Safe hands** | Route CEO direct-dispatch through the approval/policy gate | Done |
+| | Dispatch idempotency (dedup key on retries) | Done |
+| | Spend caps per department | Partial |
+| **Cross-checking** (quality) | Agent-output evaluation harness (LLM-as-judge / rule checks) | Planned |
+| | Regression scoring of manager decisions | Planned |
+| | Canary rollouts of prompt changes | Planned |
+| **Cooperation** | Shared task-handoff protocol between departments | Partial |
+| | SLA / escalation timers | Planned |
+| | Weekly cross-department retro that updates strategy | Planned |
+
+**Status key:** *Done* = shipped; *Partial* = foundations exist, needs
+hardening; *Planned* = designed but not yet built.
+
+### Recommended next 3 steps
+
+1. **Finish accountability first** — land structured JSON logging with a
+   `trace_id` per run plus per-agent cost/latency metrics, so every autonomous
+   action is explainable and priced before you widen autonomy.
+2. **Close the senses gap** — add multi-tenant inbound routing by phone number
+   and inbound email intake, so the org reliably hears *every* customer.
+3. **Stand up cross-checking** — introduce an agent-output evaluation harness
+   (LLM-as-judge + rule checks) to catch quality drift before it reaches
+   customers.

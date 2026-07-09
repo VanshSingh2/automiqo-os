@@ -2,7 +2,10 @@
   "name": "Monitor VPS Health",
   "nodes": [
     {
-      "parameters": {},
+      "parameters": {
+        "path": "monitor_vps_health",
+        "httpMethod": "POST"
+      },
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,

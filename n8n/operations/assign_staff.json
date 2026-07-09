@@ -13,7 +13,7 @@
       ],
       "parameters": {
         "httpMethod": "POST",
-        "path": "assign_staff_ops",
+        "path": "assign_staff",
         "responseMode": "responseNode"
       }
     },

@@ -2,7 +2,10 @@
   "name": "Rotate API Key Reminder",
   "nodes": [
     {
-      "parameters": {},
+      "parameters": {
+        "path": "rotate_api_key_reminder",
+        "httpMethod": "POST"
+      },
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,

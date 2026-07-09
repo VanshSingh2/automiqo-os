@@ -4,10 +4,39 @@ The LLM decides the action, not hardcoded rules.
 Handler returns: {auto_fire: [{workflow, params}], queue_for_approval: [{workflow, params, reason}]}
 """
 import json
+import hashlib
 from datetime import datetime, timezone, timedelta
 from backend.events.router import requires_approval
 from backend.memory.supabase_client import get_supabase
 from backend.security.sanitize import wrap_untrusted
+from backend.obs import get_logger, log_event
+
+_log = get_logger("events.handlers")
+
+
+def _dedup_key(business_id: str, workflow: str, parameters: dict) -> str:
+    """Stable idempotency key for a dispatch action."""
+    raw = f"{business_id}|{workflow}|{json.dumps(parameters, sort_keys=True, default=str)}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _already_dispatched(sb, business_id: str, workflow: str, key: str) -> bool:
+    """Return True if an identical action was auto-fired in the last 10 minutes.
+
+    Defensive: any error here returns False so dispatch proceeds as normal.
+    """
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+        rows = sb.table("tasks").select("id,parameters") \
+            .eq("business_id", business_id).eq("workflow", workflow) \
+            .gte("created_at", cutoff).limit(50).execute().data or []
+        for row in rows:
+            params = row.get("parameters") or {}
+            if isinstance(params, dict) and params.get("_idem") == key:
+                return True
+    except Exception:
+        return False
+    return False
 
 
 async def _think(agent_class, business_id: str, event_type: str, context: dict) -> dict:
@@ -83,7 +112,13 @@ async def dispatch_action(business_id: str, workflow: str, parameters: dict, rea
             "status": "pending",
         }).execute()
     else:
-        # Auto-fire via dispatcher
+        # Auto-fire via dispatcher — dedup identical actions in a short window.
+        key = _dedup_key(business_id, workflow, parameters)
+        if _already_dispatched(sb, business_id, workflow, key):
+            log_event(_log, "action.deduped", business_id=business_id, workflow=workflow)
+            return
+        # Store the idempotency key inside the parameters JSON (no schema change).
+        parameters = {**parameters, "_idem": key}
         from backend.dispatcher.queue import enqueue_task
         result = sb.table("tasks").insert({
             "business_id": business_id,
@@ -101,6 +136,7 @@ async def dispatch_action(business_id: str, workflow: str, parameters: dict, rea
             "parameters": parameters,
             "priority": "high",
         })
+        log_event(_log, "action.dispatched", business_id=business_id, workflow=workflow, task_id=str(task_id))
 
 
 # ── Dept Handlers ─────────────────────────────────────────────

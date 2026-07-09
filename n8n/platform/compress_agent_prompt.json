@@ -2,7 +2,10 @@
   "name": "Compress Agent Prompt",
   "nodes": [
     {
-      "parameters": {},
+      "parameters": {
+        "path": "compress_agent_prompt",
+        "httpMethod": "POST"
+      },
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,

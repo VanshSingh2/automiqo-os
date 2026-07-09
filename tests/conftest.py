@@ -58,6 +58,17 @@ sys.modules["supabase"].create_client = MagicMock()
 sys.modules["supabase"].Client = MagicMock
 
 
+# Make langchain's @tool an identity decorator so tool-decorated functions
+# (e.g. the CEO tools) stay real, callable coroutines in tests.
+def _identity_tool(*args, **kwargs):
+    if args and callable(args[0]):
+        return args[0]
+    return lambda f: f
+
+
+sys.modules["langchain_core.tools"].tool = _identity_tool
+
+
 
 # ── Fake Supabase client ────────────────────────────────────────────────────
 class _Result:

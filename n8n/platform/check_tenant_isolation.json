@@ -2,7 +2,10 @@
   "name": "Check Tenant Isolation",
   "nodes": [
     {
-      "parameters": {},
+      "parameters": {
+        "path": "check_tenant_isolation",
+        "httpMethod": "POST"
+      },
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,

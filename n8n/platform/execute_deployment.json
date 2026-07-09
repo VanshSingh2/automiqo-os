@@ -2,7 +2,10 @@
   "name": "Execute Deployment",
   "nodes": [
     {
-      "parameters": {},
+      "parameters": {
+        "path": "execute_deployment",
+        "httpMethod": "POST"
+      },
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,

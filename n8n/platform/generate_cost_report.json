@@ -2,7 +2,10 @@
   "name": "Generate Cost Report",
   "nodes": [
     {
-      "parameters": {},
+      "parameters": {
+        "path": "generate_cost_report",
+        "httpMethod": "POST"
+      },
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,

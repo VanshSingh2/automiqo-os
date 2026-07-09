@@ -2,6 +2,9 @@ import os
 import json
 import redis.asyncio as aioredis
 
+from backend.obs import get_logger, log_event
+
+_log = get_logger("dispatcher.queue")
 _redis = None
 
 
@@ -16,6 +19,8 @@ async def enqueue_task(payload: dict) -> None:
     r = await get_redis()
     queue = "tasks:high" if payload.get("priority") == "high" else "tasks:normal"
     await r.rpush(queue, json.dumps(payload))
+    log_event(_log, "task.enqueued", business_id=payload.get("business_id"),
+              workflow=payload.get("workflow"), queue=queue)
 
 
 async def worker_loop():
@@ -34,6 +39,8 @@ async def worker_loop():
             from backend.dispatcher.retry import retry_with_backoff
             await retry_with_backoff(webhook_url, payload)
         except Exception as e:
+            log_event(_log, "task.failed", task_id=payload.get("task_id"),
+                      workflow=payload.get("workflow"), error=str(e))
             await _mark_failed(payload["task_id"], str(e))
 
 

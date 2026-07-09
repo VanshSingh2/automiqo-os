@@ -2,7 +2,10 @@
   "name": "Rollback to Version",
   "nodes": [
     {
-      "parameters": {},
+      "parameters": {
+        "path": "rollback_to_version",
+        "httpMethod": "POST"
+      },
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
