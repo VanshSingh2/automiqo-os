@@ -60,23 +60,165 @@ def _canary_tolerance() -> float:
         return 0.05
 
 
-async def _read_current_metric(business_id: str, target_key: str) -> float:
-    """
-    Best-effort current QUALITY metric (0..1) for a target.
+def _read_current_metric_window_days() -> int:
+    """Lookback window (days) for the canary success-rate signal. Default 14."""
+    try:
+        return int(os.getenv("IMPROVE_METRIC_WINDOW_DAYS", "14"))
+    except Exception:
+        return 14
 
-    Uses the real ``agent_metrics`` schema via ``agent_metrics.reliability`` and
-    returns the target agent's recent success_rate as the canary/baseline
-    signal — so a regression (more failures after the change) drives a rollback.
-    ``reliability`` itself never raises and returns a trusting default
-    (success_rate=1.0) when there is no signal yet; we only fall back to 0.0 on
-    a hard error here.
+
+# Hardcoded fallback prompt targets used when the prompts/ dir is missing or
+# unreadable. These are the real top-level prompt basenames under prompts/.
+_FALLBACK_PROMPT_TARGETS = {
+    "ceo", "coo", "cro", "cmo", "cfo", "cto",
+    "customer_success_director", "learning_director", "chief_of_staff",
+}
+
+# Module-level cache for the scanned prompt-target set (populated lazily).
+_VALID_PROMPT_TARGETS_CACHE: "set[str] | None" = None
+
+
+def valid_prompt_targets() -> "set[str]":
+    """
+    Best-effort set of valid prompt target keys (basenames of *.md files under
+    the repo ``prompts/`` directory, recursive, without the ``.md`` suffix).
+
+    The prompt basename is what BaseAgent loads by NAME and what a prompt
+    addendum is keyed on, so only these are meaningful prompt targets for an
+    adopted improvement. Result is cached in a module global. If the directory
+    is missing/unreadable, returns a hardcoded fallback set. Never raises.
+    """
+    global _VALID_PROMPT_TARGETS_CACHE
+    if _VALID_PROMPT_TARGETS_CACHE is not None:
+        return set(_VALID_PROMPT_TARGETS_CACHE)
+    found: "set[str]" = set()
+    try:
+        # improvement_manager.py lives at backend/engines/ -> repo root is 2 up.
+        repo_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        prompts_dir = os.path.join(repo_root, "prompts")
+        for dirpath, _dirs, files in os.walk(prompts_dir):
+            for fname in files:
+                if fname.endswith(".md"):
+                    found.add(fname[:-3])
+    except Exception:
+        found = set()
+    if not found:
+        found = set(_FALLBACK_PROMPT_TARGETS)
+    _VALID_PROMPT_TARGETS_CACHE = set(found)
+    return set(found)
+
+
+def _valid_target(target_type, target_key) -> bool:
+    """
+    Pure validation helper for a proposed improvement target.
+
+    A ``prompt`` target is only valid if its key is a real prompt basename
+    (so an adopted addendum actually reaches an agent). ``workflow`` (and any
+    non-prompt) targets are accepted as-is (ledger-only). Never raises.
     """
     try:
-        from backend.engines import agent_metrics
-        stats = await agent_metrics.reliability(business_id, target_key)
-        return float(stats.get("success_rate", 1.0) or 0.0)
+        key = (target_key or "").strip()
+        if not key:
+            return False
+        if (target_type or "").strip().lower() == "prompt":
+            return key in valid_prompt_targets()
+        return True
     except Exception:
-        return 0.0
+        return False
+
+
+def _normalize_agent(name) -> str:
+    """
+    Normalize an agent identifier for fuzzy matching between the ``agent_metrics``
+    ``agent_name`` (a CLASS name like ``CFOAgent``/``CustomerSuccessAgent``/
+    ``LearningDirectorAgent``) and a prompt target key (like ``cfo``).
+
+    Lowercases, strips a trailing ``agent``/``director``/``chatagent`` suffix,
+    then strips all non-alphanumerics. Examples:
+      ``CFOAgent`` -> ``cfo``
+      ``CustomerSuccessAgent`` -> ``customersuccess``
+      ``LearningDirectorAgent`` -> ``learning``
+    Never raises.
+    """
+    try:
+        import re
+        s = (name or "").strip().lower()
+        # Strip trailing role suffixes repeatedly so "LearningDirectorAgent"
+        # collapses through "learningdirector" down to "learning".
+        changed = True
+        while changed:
+            changed = False
+            for suffix in ("chatagent", "agent", "director"):
+                # Compare on alnum-normalized boundary to tolerate separators.
+                stripped = re.sub(r"[^a-z0-9]", "", s)
+                if stripped.endswith(suffix) and stripped != suffix:
+                    s = stripped[: -len(suffix)]
+                    changed = True
+                    break
+        return re.sub(r"[^a-z0-9]", "", s)
+    except Exception:
+        return ""
+
+
+async def _read_current_metric(business_id: str, target_key: str) -> float:
+    """
+    Best-effort current QUALITY metric (0..1) for a prompt/agent target.
+
+    The ``agent_metrics`` table stores ``agent_name`` as the agent CLASS name
+    (e.g. ``CFOAgent``), while a prompt-targeted improvement carries a prompt
+    KEY (e.g. ``cfo``). We therefore scan the business's recent metric rows and
+    compute the success_rate over rows whose NORMALIZED agent_name matches the
+    normalized ``target_key`` (equal, or one contained in the other).
+
+    Fallbacks (all best-effort, never raise):
+      * no matching rows        -> agent_metrics.reliability(...)["success_rate"]
+      * any error / no signal   -> 1.0 (neutral, trusting) so a no-signal canary
+                                    never forces a rollback of everything.
+    """
+    try:
+        from datetime import timedelta
+        from backend.memory.supabase_client import get_supabase
+
+        target_norm = _normalize_agent(target_key)
+        window = _read_current_metric_window_days()
+        since = (datetime.now(timezone.utc) - timedelta(days=window)).isoformat()
+
+        rows = []
+        try:
+            rows = (
+                get_supabase().table("agent_metrics")
+                .select("agent_name,success")
+                .eq("business_id", str(business_id))
+                .gte("created_at", since)
+                .execute().data
+            ) or []
+        except Exception:
+            rows = []
+
+        matched = []
+        for r in rows:
+            an = _normalize_agent(r.get("agent_name"))
+            if not an or not target_norm:
+                continue
+            if an == target_norm or an in target_norm or target_norm in an:
+                matched.append(r)
+
+        if matched:
+            successes = sum(1 for r in matched if r.get("success"))
+            return float(successes / len(matched))
+
+        # No matching rows: fall back to the reliability helper (which also
+        # returns a trusting default when there is no signal).
+        try:
+            from backend.engines import agent_metrics
+            stats = await agent_metrics.reliability(business_id, target_key)
+            return float(stats.get("success_rate", 1.0) or 1.0)
+        except Exception:
+            return 1.0
+    except Exception:
+        # Neutral default so a no-signal canary doesn't force a rollback.
+        return 1.0
 
 
 def _apply_adopted_value(business_id: str, row: dict) -> None:

@@ -11,6 +11,7 @@ const NAV = [
   { href: "/team-members", label: "Team Members", icon: Users },
   { href: "/team", label: "Team Chat", icon: MessagesSquare },
   { href: "/activity", label: "Activity", icon: Activity },
+  { href: "/accountability", label: "Accountability", icon: Activity },
   { href: "/chat", label: "CEO AI", icon: Bot },
   { href: "/approvals", label: "Approvals", icon: CheckSquare },
   { href: "/reports", label: "Reports", icon: FileText },

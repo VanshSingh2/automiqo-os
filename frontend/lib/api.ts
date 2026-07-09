@@ -214,3 +214,68 @@ export async function askMember(businessId: string, agentKey: string, message: s
     return data.reply || "Done.";
   } catch { return "(Couldn't reach the team member.)"; }
 }
+
+
+// ── Accountability (agent metrics) ──────────────────────────────────────────
+export type AgentRollup = {
+  agent_name: string;
+  runs: number;
+  success_rate: number; // 0..1
+  avg_latency_ms: number;
+  total_cost_usd: number;
+};
+
+export type AccountabilitySummary = {
+  total_runs: number;
+  overall_success_rate: number; // 0..1
+  total_cost_usd: number;
+  avg_latency_ms: number;
+  agent_count: number;
+  window_days: number;
+};
+
+export type AgentMetricRow = {
+  agent_name: string;
+  event: string;
+  workflow: string;
+  latency_ms: number;
+  cost_usd: number;
+  success: boolean;
+  trace_id: string;
+  created_at: string;
+};
+
+export async function getAccountabilitySummary(
+  businessId: string,
+  windowDays = 14
+): Promise<AccountabilitySummary | null> {
+  try {
+    const res = await fetch(`${BASE}/accountability/${businessId}/summary?window_days=${windowDays}`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch { return null; }
+}
+
+export async function getAccountabilityAgents(
+  businessId: string,
+  windowDays = 14
+): Promise<AgentRollup[]> {
+  try {
+    const res = await fetch(`${BASE}/accountability/${businessId}/agents?window_days=${windowDays}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.agents || [];
+  } catch { return []; }
+}
+
+export async function getAccountabilityRecent(
+  businessId: string,
+  limit = 50
+): Promise<AgentMetricRow[]> {
+  try {
+    const res = await fetch(`${BASE}/accountability/${businessId}/recent?limit=${limit}`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data) ? data : (data.events || []);
+  } catch { return []; }
+}

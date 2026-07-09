@@ -162,6 +162,39 @@ put your certs under `/etc/letsencrypt`, then:
 docker compose -f docker/docker-compose.prod.yml up -d
 ```
 
+### Scaling out (HA)
+
+The app is split into roles via the `ROLE` env var so you can run redundant
+replicas without double-firing work:
+
+- **`ROLE=web`** — the API. Run N replicas behind the load balancer.
+- **`ROLE=worker`** — task/event workers. Run N replicas freely (Redis `blpop`
+  is consumer-safe).
+- **`ROLE=scheduler`** — the autonomous + manager schedulers. Run 1+ replicas;
+  cluster-wide `run_once` locks ensure each scheduled unit fires exactly once,
+  with automatic failover if one dies.
+- **`ROLE=all`** (default) — everything in one process (single-node mode).
+
+The bundled compose already demonstrates the split (`backend`=web, plus `worker`
+and `scheduler` services sharing one image).
+
+### Redis persistence & managed Redis
+
+Redis is the fast task/event queue; Supabase's `tasks` table is the durable
+source of truth (the scheduler re-hydrates the queue on boot via
+`recover_pending_tasks`). The bundled Redis now runs with **AOF persistence + a
+`redis_data` volume**, so a Redis restart no longer drops in-flight work.
+
+For real production, **use a managed Redis** (Upstash, AWS ElastiCache, or Redis
+Cloud) instead of the bundled container — it's the last remaining
+single-point-of-failure:
+
+1. Provision a managed Redis instance (enable persistence + replication there).
+2. Set `REDIS_URL` to its TLS endpoint, e.g. `rediss://:<password>@<host>:6379`.
+3. Remove the `redis` service from the compose file (nothing else needs it).
+
+No code changes are required — it's purely `REDIS_URL` configuration.
+
 ---
 
 ## 7. Deploy the n8n workflows

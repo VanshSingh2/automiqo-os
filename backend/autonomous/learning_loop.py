@@ -13,6 +13,7 @@ from datetime import datetime, timezone, timedelta
 from uuid import UUID
 from backend.memory.supabase_client import get_supabase
 from backend.events.handlers import dispatch_action
+from agents.base_agent import BaseAgent
 from agents.departments.learning.agent import LearningDirectorAgent
 
 
@@ -146,7 +147,8 @@ async def run_learning_daily_loop(business_id: str) -> dict:
             "Reference what you remember from prior days where relevant." + _mem,
             context=context,
         )
-        for rec in (resp.recommendations or [])[:5]:
+        recs = list(resp.recommendations or [])[:5]
+        for rec in recs:
             sb.table("recommendations").insert({
                 "business_id": bid,
                 "generated_by": "learning_director",
@@ -156,28 +158,86 @@ async def run_learning_daily_loop(business_id: str) -> dict:
                 "priority": "normal",
                 "status": "pending",
             }).execute()
-            # SAFE CLOSED-LOOP SELF-IMPROVEMENT (best-effort, never breaks loop).
-            # Also log each suggestion as a structured proposal. Owner still
-            # sees the recommendation above; this just tracks it for the
-            # optional automated canary/rollback path (gated by AUTO_IMPROVE).
-            try:
-                from backend.engines import improvement_manager
-                # Heuristic: treat suggestions mentioning a workflow as workflow
-                # changes, otherwise as prompt changes. target_key is best-effort.
-                _rec_l = (rec or "").lower()
-                _target_type = "workflow" if "workflow" in _rec_l else "prompt"
-                imp_id = await improvement_manager.propose(
-                    bid, _target_type, "learning_director",
-                    new_value=rec, old_value="",
-                    rationale="Nightly learning review suggestion",
-                )
-                # Only advance to canary automatically when AUTO_IMPROVE is on;
-                # start_canary itself is a no-op/False when the flag is off.
-                if imp_id:
-                    await improvement_manager.start_canary(bid, imp_id)
-            except Exception:
-                pass
         approvals_queued.append(f"learning recommendations: {len(resp.recommendations or [])}")
+
+        # SAFE CLOSED-LOOP SELF-IMPROVEMENT — PER-AGENT TARGETED (best-effort).
+        # The owner-facing recommendations above are untouched. Here we make ONE
+        # extra LLM call to turn the day's free-text suggestions into STRUCTURED,
+        # TARGETED proposals aimed at a REAL prompt name (so an adopted addendum
+        # actually reaches that agent) or a workflow. Everything is wrapped so a
+        # failure here can never break the nightly loop.
+        try:
+            from backend.engines import improvement_manager
+            valid_targets = sorted(improvement_manager.valid_prompt_targets())
+            recs_text = "\n".join(f"- {r}" for r in recs)
+            if recs_text.strip():
+                from langchain_core.messages import HumanMessage, SystemMessage
+                import json as _json
+                _sys = (
+                    "You convert nightly learning review notes into targeted "
+                    "self-improvement proposals for an AI company OS. Respond with "
+                    "STRICT JSON only, no prose, in exactly this shape:\n"
+                    '{"improvements":[{"target_type":"prompt"|"workflow",'
+                    '"target_key":"<prompt name or workflow>",'
+                    '"improvement":"<specific change text>","rationale":"<why>"}]}\n'
+                    "Rules: at most 3 items. For target_type 'prompt', target_key "
+                    "MUST be exactly one of the valid prompt names listed. For "
+                    "'workflow', target_key is the workflow name. 'improvement' is "
+                    "the concrete additive instruction to apply."
+                )
+                _human = (
+                    f"Valid prompt names: {', '.join(valid_targets)}\n\n"
+                    f"Today's recommendations:\n{recs_text}\n\n"
+                    "Produce the JSON now."
+                )
+                _llm = getattr(agent, "llm", None) or BaseAgent._build_dept_llm()
+                _resp = await _llm.ainvoke([
+                    SystemMessage(content=_sys),
+                    HumanMessage(content=_human),
+                ])
+                _content = getattr(_resp, "content", _resp)
+                if isinstance(_content, list):
+                    _content = "".join(
+                        (b.get("text", "") if isinstance(b, dict) else str(b))
+                        for b in _content
+                    )
+                _content = str(_content or "")
+                # Strip markdown fences if present.
+                import re as _re
+                _m = _re.search(r"```[\w]*\s*([\s\S]*?)```", _content)
+                _clean = _m.group(1).strip() if _m else _content.strip()
+                try:
+                    _parsed = _json.loads(_clean)
+                except Exception:
+                    _parsed = {}
+                _items = (_parsed or {}).get("improvements") or []
+                _proposed = 0
+                for _it in _items[:3]:
+                    if not isinstance(_it, dict):
+                        continue
+                    _tt = (_it.get("target_type") or "").strip().lower()
+                    _tk = (_it.get("target_key") or "").strip()
+                    _imp = (_it.get("improvement") or "").strip()
+                    _why = (_it.get("rationale") or "").strip()
+                    if _tt not in ("prompt", "workflow") or not _tk or not _imp:
+                        continue
+                    # Skip prompt proposals whose target is not a real prompt name
+                    # (an addendum on a non-existent key would never reach an agent).
+                    if not improvement_manager._valid_target(_tt, _tk):
+                        continue
+                    imp_id = await improvement_manager.propose(
+                        bid, _tt, _tk,
+                        new_value=_imp, old_value="",
+                        rationale=_why or "Nightly targeted learning improvement",
+                    )
+                    if imp_id:
+                        _proposed += 1
+                        # start_canary is a no-op/False unless AUTO_IMPROVE is on.
+                        await improvement_manager.start_canary(bid, imp_id)
+                if _proposed:
+                    actions_taken.append(f"targeted improvement proposals: {_proposed}")
+        except Exception:
+            pass
     except Exception:
         pass
 

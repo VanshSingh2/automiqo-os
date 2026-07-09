@@ -33,6 +33,10 @@ services:
 
   redis:
     image: redis:7-alpine
+    # AOF persistence so a restart doesn't drop the queue. For real production,
+    # prefer a MANAGED Redis (see automiqo-os.md) and point REDIS_URL at it —
+    # then you can remove this service entirely.
+    command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
     healthcheck:

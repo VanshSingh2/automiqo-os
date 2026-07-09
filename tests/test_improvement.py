@@ -164,3 +164,65 @@ async def test_rollback_removes_addendum(make_sb):
     updates = sb.queries["businesses"].updated
     assert any(u.get("config", {}).get("prompt_addenda", {}).get("cfo") == ["Keep it warm."]
                for u in updates)
+
+
+
+# ── valid_prompt_targets (per-agent targeting) ──────────────────────────────
+def test_valid_prompt_targets_contains_core_agents():
+    targets = improvement_manager.valid_prompt_targets()
+    assert isinstance(targets, set)
+    # Works via the fallback set even if prompts/ is absent in the test env.
+    assert {"cfo", "coo", "cro", "cmo", "cto", "ceo"}.issubset(targets)
+
+
+def test_valid_prompt_targets_cached():
+    # Second call returns the same content (module-level cache).
+    a = improvement_manager.valid_prompt_targets()
+    b = improvement_manager.valid_prompt_targets()
+    assert a == b
+    assert {"cfo", "ceo"}.issubset(b)
+
+
+# ── _valid_target pure helper ───────────────────────────────────────────────
+def test_valid_target_prompt_known():
+    assert improvement_manager._valid_target("prompt", "cfo") is True
+
+
+def test_valid_target_prompt_unknown_skipped():
+    assert improvement_manager._valid_target("prompt", "not_a_prompt") is False
+
+
+def test_valid_target_workflow_always_ok():
+    assert improvement_manager._valid_target("workflow", "anything-at-all") is True
+
+
+def test_valid_target_empty_key_rejected():
+    assert improvement_manager._valid_target("prompt", "") is False
+    assert improvement_manager._valid_target("workflow", "") is False
+
+
+# ── _normalize_agent ────────────────────────────────────────────────────────
+def test_normalize_agent_class_names():
+    assert improvement_manager._normalize_agent("CFOAgent") == "cfo"
+    assert improvement_manager._normalize_agent("CustomerSuccessAgent") == "customersuccess"
+    assert improvement_manager._normalize_agent("LearningDirectorAgent") == "learning"
+
+
+# ── _read_current_metric normalized matching ────────────────────────────────
+async def test_read_current_metric_matches_normalized_class_name(make_sb, monkeypatch):
+    # Two CFOAgent rows (1 success, 1 failure) -> success_rate 0.5 for key "cfo".
+    sb = make_sb({"agent_metrics": [
+        {"agent_name": "CFOAgent", "success": True},
+        {"agent_name": "CFOAgent", "success": False},
+    ]})
+    with patch(SB_PATH, return_value=sb):
+        val = await improvement_manager._read_current_metric("biz-1", "cfo")
+    assert abs(val - 0.5) < 1e-9
+
+
+async def test_read_current_metric_neutral_when_no_rows(make_sb, monkeypatch):
+    # No agent_metrics rows at all -> neutral 1.0 (never forces a rollback).
+    sb = make_sb({"agent_metrics": []})
+    with patch(SB_PATH, return_value=sb):
+        val = await improvement_manager._read_current_metric("biz-1", "cfo")
+    assert val == 1.0
