@@ -29,7 +29,7 @@ This is the single source of truth for **running Automiqo OS on a VPS**.
    memory, KPIs                                   CEO standup)
                                        │
                                        ▼
-                                n8n (:5678) — 104 workflows fire real
+                                n8n (:5678) — 103 workflows fire real
                                 actions (SMS, email, bookings, calls…)
 ```
 
@@ -37,7 +37,7 @@ This is the single source of truth for **running Automiqo OS on a VPS**.
   started from `backend/main.py`.
 - **Frontend** (`frontend/`): Next.js 14 dashboard. All API calls go through a
   server-side proxy (`app/api/proxy`) to `BACKEND_URL`.
-- **n8n** (`n8n/`): 104 workflow JSONs that perform the real-world actions.
+- **n8n** (`n8n/`): 103 workflow JSONs that perform the real-world actions.
 - **Specialist library** (`specialist_library/`): the `agency-agents` repo,
   included as a **git submodule** — agents consult these experts.
 
@@ -166,7 +166,7 @@ docker compose -f docker/docker-compose.prod.yml up -d
 
 ## 7. Deploy the n8n workflows
 
-The 104 workflow JSONs live in `n8n/`. After n8n is up:
+The 103 workflow JSONs live in `n8n/`. After n8n is up:
 
 1. In the n8n editor, create an API key (Settings → API).
 2. Put it in `.env` as `N8N_API_KEY` and set `N8N_WEBHOOK_BASE_URL` to your n8n
@@ -334,7 +334,7 @@ Already in place:
 - [x] Human approval gate for high-risk actions
 - [x] Docker healthchecks + dependency ordering
 - [x] Complete DB schema (all code-referenced tables/columns present)
-- [x] All 104 n8n workflows valid; specialist submodule wired
+- [x] All 103 n8n workflows valid; specialist submodule wired
 
 Before real/paying traffic — **do these**:
 - [ ] **Webhook signature verification** (Telnyx / VAPI / Cal.com) — endpoints
