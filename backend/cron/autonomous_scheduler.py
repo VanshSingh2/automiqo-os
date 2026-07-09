@@ -282,6 +282,17 @@ async def start_autonomous_scheduler():
         print("[scheduler] AUTONOMOUS_MODE=false — skipping")
         return []
 
+    # Durability: before entering the periodic loops, re-hydrate the Redis fast
+    # queue from the durable Supabase `tasks` table so any tasks left 'queued'
+    # or orphaned 'running' across a restart get re-enqueued. Best-effort — a
+    # recovery failure must never block scheduler/app startup.
+    try:
+        from backend.dispatcher.queue import recover_pending_tasks
+        recovered = await recover_pending_tasks()
+        print(f"[scheduler] startup recovery re-enqueued {recovered} pending task(s)")
+    except Exception as e:
+        print(f"[scheduler] startup recovery skipped: {e}")
+
     tasks = []
 
     # One scheduler per department

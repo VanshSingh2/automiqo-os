@@ -966,6 +966,54 @@ BEGIN
   END LOOP;
 END $$;
 
+-- ============================================================================
+-- AUTONOMY-MATURITY TABLES (accountability metrics + self-improvement ledger)
+-- ============================================================================
+
+-- Per-agent accountability metrics (cost / latency / quality per run).
+CREATE TABLE IF NOT EXISTS agent_metrics (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  business_id TEXT NOT NULL,
+  agent_name  TEXT NOT NULL,
+  event       TEXT NOT NULL,
+  workflow    TEXT,
+  latency_ms  INTEGER,
+  cost_usd    NUMERIC(12,6),
+  success     BOOLEAN NOT NULL DEFAULT true,
+  trace_id    TEXT,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_agent_metrics_biz_agent_time ON agent_metrics(business_id, agent_name, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_metrics_biz_workflow_time ON agent_metrics(business_id, workflow, created_at DESC);
+
+-- Closed-loop self-improvement ledger (proposed -> canary -> adopted|rolled_back).
+CREATE TABLE IF NOT EXISTS improvements (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id     UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  target_type     TEXT NOT NULL,           -- 'prompt' | 'workflow'
+  target_key      TEXT NOT NULL,           -- e.g. 'cfo' or a workflow name
+  old_value       TEXT DEFAULT '',
+  new_value       TEXT DEFAULT '',
+  status          TEXT NOT NULL DEFAULT 'proposed', -- proposed|canary|adopted|rolled_back|rejected
+  metric_baseline NUMERIC DEFAULT 0,
+  metric_canary   NUMERIC DEFAULT 0,
+  rationale       TEXT DEFAULT '',
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  decided_at      TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_improvements_biz_status ON improvements(business_id, status);
+
+DO $$
+DECLARE t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['agent_metrics','improvements'] LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = t AND policyname = 'service_role_all') THEN
+      EXECUTE format('CREATE POLICY "service_role_all" ON %I FOR ALL TO service_role USING (true) WITH CHECK (true)', t);
+    END IF;
+  END LOOP;
+END $$;
+
 CREATE OR REPLACE VIEW sequence_stats AS
 SELECT
   business_id,

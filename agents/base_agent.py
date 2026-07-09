@@ -74,6 +74,30 @@ class BaseAgent(ABC):
         # Wrap with retry/backoff so transient provider failures don't kill loops/pulses.
         return ResilientLLM(_llm)
 
+    async def _record_run(self, trace_id, start_ms, success, workflow=None) -> None:
+        """Best-effort accountability hook for a dept/manager agent run.
+
+        Computes latency from ``start_ms`` (see backend.obs.now_ms) and forwards
+        a metric via obs.record_agent_run. Concrete agents implement their own
+        ``run()``; call this at the end of a run path to record it. Never raises,
+        so it is always safe to call regardless of agent state.
+        """
+        try:
+            from backend import obs
+            latency_ms = None
+            if start_ms is not None:
+                latency_ms = max(0, obs.now_ms() - int(start_ms))
+            await obs.record_agent_run(
+                str(self.business_id),
+                self.__class__.__name__,
+                trace_id,
+                latency_ms,
+                bool(success),
+                workflow=workflow,
+            )
+        except Exception:
+            pass
+
     async def consult_specialist(self, specialist: str, task: str, extra_context: dict = {}) -> str:
         """Consult a specialist expert. Available to all agents."""
         from agents.shared.specialist_caller import SpecialistCaller

@@ -141,6 +141,27 @@ async def run_learning_daily_loop(business_id: str) -> dict:
                 "priority": "normal",
                 "status": "pending",
             }).execute()
+            # SAFE CLOSED-LOOP SELF-IMPROVEMENT (best-effort, never breaks loop).
+            # Also log each suggestion as a structured proposal. Owner still
+            # sees the recommendation above; this just tracks it for the
+            # optional automated canary/rollback path (gated by AUTO_IMPROVE).
+            try:
+                from backend.engines import improvement_manager
+                # Heuristic: treat suggestions mentioning a workflow as workflow
+                # changes, otherwise as prompt changes. target_key is best-effort.
+                _rec_l = (rec or "").lower()
+                _target_type = "workflow" if "workflow" in _rec_l else "prompt"
+                imp_id = await improvement_manager.propose(
+                    bid, _target_type, "learning_director",
+                    new_value=rec, old_value="",
+                    rationale="Nightly learning review suggestion",
+                )
+                # Only advance to canary automatically when AUTO_IMPROVE is on;
+                # start_canary itself is a no-op/False when the flag is off.
+                if imp_id:
+                    await improvement_manager.start_canary(bid, imp_id)
+            except Exception:
+                pass
         approvals_queued.append(f"learning recommendations: {len(resp.recommendations or [])}")
     except Exception:
         pass

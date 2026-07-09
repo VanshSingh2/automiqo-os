@@ -7,6 +7,7 @@ without pulling in a heavy logging framework. Level is driven by env LOG_LEVEL
 """
 import os
 import json
+import time
 import uuid
 import logging
 
@@ -61,5 +62,68 @@ def log_event(logger: logging.Logger, event: str, **fields) -> None:
     try:
         payload = {"event": event, **fields}
         logger.info(event, extra={"_fields": payload})
+    except Exception:
+        pass
+
+
+
+def now_ms() -> int:
+    """Monotonic clock in integer milliseconds — for measuring latency.
+
+    Uses a monotonic source so it is immune to wall-clock adjustments. Best
+    effort: on the (very unlikely) chance the clock read fails, returns 0.
+    """
+    try:
+        return int(time.monotonic() * 1000)
+    except Exception:
+        return 0
+
+
+class timed:
+    """Context manager that measures elapsed monotonic milliseconds.
+
+    Never raises. Usage:
+
+        with timed() as t:
+            do_work()
+        latency_ms = t.ms
+    """
+
+    def __init__(self):
+        self.ms = 0
+        self._start = 0
+
+    def __enter__(self) -> "timed":
+        self._start = now_ms()
+        return self
+
+    def __exit__(self, *exc) -> bool:
+        try:
+            self.ms = max(0, now_ms() - self._start)
+        except Exception:
+            self.ms = 0
+        # Do not suppress exceptions from the wrapped block.
+        return False
+
+
+async def record_agent_run(business_id, agent_name, trace_id, latency_ms, success,
+                           cost_usd: float = 0.0, workflow=None) -> None:
+    """Best-effort forward of an agent-run metric to agent_metrics.record.
+
+    Imports agent_metrics lazily inside the call to avoid a hard import cycle
+    (obs is a low-level module imported widely). Never raises.
+    """
+    try:
+        from backend.engines import agent_metrics
+        await agent_metrics.record(
+            business_id,
+            agent_name,
+            "agent.run",
+            workflow=workflow,
+            latency_ms=latency_ms,
+            cost_usd=cost_usd,
+            success=success,
+            trace_id=trace_id,
+        )
     except Exception:
         pass

@@ -117,6 +117,39 @@ async def dispatch_action(business_id: str, workflow: str, parameters: dict, rea
         if _already_dispatched(sb, business_id, workflow, key):
             log_event(_log, "action.deduped", business_id=business_id, workflow=workflow)
             return
+
+        # ── Pre-execution verification / eval gate ──────────────────────────
+        # Score whether this auto-fire is safe/sensible. Low-confidence or
+        # high-blast-radius actions get held for owner review instead of firing.
+        # Resilient by design: if verification itself raises, we fall through and
+        # fire (fail-open) so the gate can never silently break the pipeline.
+        try:
+            from backend.engines import verification_engine
+            verdict = await verification_engine.evaluate_action(business_id, workflow, parameters, reason)
+        except Exception:
+            verdict = None
+        if verdict and verdict.get("verdict") in ("escalate", "block"):
+            _reasons = verdict.get("reasons") or []
+            _score = verdict.get("score")
+            sb.table("recommendations").insert({
+                "business_id": business_id,
+                "generated_by": "verification_engine",
+                "category": "auto_action",
+                "title": f"Verify-hold: {workflow}",
+                "description": (
+                    f"{reason}\n"
+                    f"Workflow: {workflow}\n"
+                    f"Verdict: {verdict.get('verdict')} (score={_score})\n"
+                    f"Reasons: {', '.join(str(r) for r in _reasons)}\n"
+                    f"Params: {json.dumps(parameters, default=str)[:500]}"
+                ),
+                "priority": "high",
+                "status": "pending",
+            }).execute()
+            log_event(_log, "action.held_for_review", business_id=business_id,
+                      workflow=workflow, verdict=verdict.get("verdict"), score=_score)
+            return
+
         # Store the idempotency key inside the parameters JSON (no schema change).
         parameters = {**parameters, "_idem": key}
         from backend.dispatcher.queue import enqueue_task
