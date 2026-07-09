@@ -88,6 +88,31 @@ def _verify_calcom(request: Request, raw_body: bytes) -> None:
         print(f"[webhooks] Cal.com signature verification error (skipping): {e}")
 
 
+def _verify_email(request: Request, raw_body: bytes) -> None:
+    """Verify a provider-agnostic inbound-email HMAC-SHA256 signature.
+
+    The sender must sign the raw request body with the shared secret
+    EMAIL_WEBHOOK_SECRET and send the lowercase hex digest in the
+    'x-email-signature-256' header.
+
+    Skips (with warning) if EMAIL_WEBHOOK_SECRET is unset so local dev keeps
+    working. Raises HTTPException(401) on a real verification failure.
+    """
+    secret = os.getenv("EMAIL_WEBHOOK_SECRET")
+    if not secret:
+        print("[webhooks] EMAIL_WEBHOOK_SECRET unset — skipping email signature verification")
+        return
+    try:
+        provided = request.headers.get("x-email-signature-256", "")
+        expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(provided, expected):
+            raise HTTPException(status_code=401, detail="invalid email signature")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[webhooks] email signature verification error (skipping): {e}")
+
+
 # ── Multi-tenant routing helper ───────────────────────────────
 
 def _business_for_phone(sb, to_number: str):
@@ -125,6 +150,34 @@ def _business_for_phone(sb, to_number: str):
             pass
 
     # TODO multi-tenant: no phone match — fall back to first business.
+    try:
+        biz = sb.table("businesses").select("id").limit(1).execute()
+        return biz.data[0]["id"] if biz.data else None
+    except Exception:
+        return None
+
+
+def _business_for_email(sb, to_addr: str):
+    """Resolve which business owns an inbound destination email address.
+
+    Matches against businesses.config->>support_email and config->>email; if
+    nothing matches (or the address is missing) falls back to the first
+    business. Fully defensive — never raises.
+    """
+    if to_addr:
+        try:
+            rows = sb.table("businesses").select("id,config").execute().data or []
+            for row in rows:
+                cfg = row.get("config") or {}
+                if not isinstance(cfg, dict):
+                    continue
+                if to_addr in (cfg.get("support_email"), cfg.get("email")):
+                    return row["id"]
+        except Exception:
+            pass
+
+    # TODO multi-tenant: no email match — fall back to first business
+    # (mirrors the appointment webhook's single-tenant fallback).
     try:
         biz = sb.table("businesses").select("id").limit(1).execute()
         return biz.data[0]["id"] if biz.data else None
@@ -267,6 +320,77 @@ async def appointment_event(request: Request):
                 "scheduled_at": payload.get("startTime", ""),
                 "service": payload.get("eventType", {}).get("title", "") if isinstance(payload.get("eventType"), dict) else "",
             }, source="calcom_webhook")
+
+        return JSONResponse({"status": "ok"})
+    except HTTPException:
+        raise
+    except Exception as e:
+        return JSONResponse({"status": "error", "detail": str(e)})
+
+
+
+@router.post("/webhooks/email/inbound")
+async def email_inbound(request: Request):
+    """Provider-agnostic inbound email webhook — fires email.received event.
+
+    The autonomous org can now 'hear' inbound customer emails (previously only
+    SMS/calls). Accepts a range of provider payload shapes with graceful
+    fallbacks (Mailgun, SendGrid, Postmark, generic JSON).
+    """
+    try:
+        raw_body = await request.body()
+        _verify_email(request, raw_body)
+
+        body = await request.json()
+
+        # Provider-agnostic field extraction with graceful fallbacks.
+        from_addr = (
+            body.get("from")
+            or body.get("sender")
+            or (body.get("envelope", {}) or {}).get("from")
+        )
+        to_addr = body.get("to") or body.get("recipient")
+        subject = body.get("subject", "")
+        text = (
+            body.get("text")
+            or body.get("body-plain")
+            or body.get("stripped-text")
+            or body.get("body", "")
+        )
+
+        if not from_addr or not text:
+            return JSONResponse({"status": "ignored"})
+
+        # Resolve which business owns this destination address (best-effort).
+        from backend.memory.supabase_client import get_supabase
+        sb = get_supabase()
+        business_id = _business_for_email(sb, to_addr)
+        if not business_id:
+            return JSONResponse({"status": "no_business"})
+
+        # Publish event — autonomous agents handle the rest.
+        from backend.events.bus import publish
+        await publish(business_id, "email.received", {
+            "from": from_addr,
+            "to": to_addr,
+            "subject": subject,
+            "body": text[:4000],
+            "channel": "email",
+            "direction": "inbound",
+        }, source="email_webhook")
+
+        # Best-effort: log the inbound message to Supabase.
+        try:
+            from datetime import datetime, timezone
+            sb.table("messages").insert({
+                "business_id": business_id,
+                "direction": "inbound",
+                "channel": "email",
+                "body": text[:4000],
+                "sent_at": datetime.now(timezone.utc).isoformat(),
+            }).execute()
+        except Exception:
+            pass
 
         return JSONResponse({"status": "ok"})
     except HTTPException:

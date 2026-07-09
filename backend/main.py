@@ -23,6 +23,7 @@ from backend.api.system_test_api import router as test_router
 from backend.api.growth_api import router as growth_router
 from backend.api.engines_api import router as engines_router
 from backend.api.business_modules_api import router as business_modules_router
+from backend.api.metrics_api import router as metrics_router
 from backend.api.team_chat_api import router as team_chat_router
 from backend.api.webhooks import router as webhooks_router
 from backend.api.slack import router as slack_router
@@ -120,6 +121,7 @@ app.include_router(test_router, dependencies=[_protected])
 app.include_router(growth_router, dependencies=[_protected])
 app.include_router(engines_router, dependencies=[_protected])
 app.include_router(business_modules_router, dependencies=[_protected])
+app.include_router(metrics_router, dependencies=[_protected])
 app.include_router(team_chat_router, dependencies=[_protected])
 
 

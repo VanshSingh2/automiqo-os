@@ -33,6 +33,7 @@ DEPT_SCHEDULE = {
 }
 HEARTBEAT_INTERVAL = int(os.getenv("HEARTBEAT_INTERVAL_MINUTES", "60"))
 URGENT_SCAN_INTERVAL = int(os.getenv("URGENT_SCAN_INTERVAL_MINUTES", "5"))
+SLA_SWEEP_INTERVAL = int(os.getenv("SLA_SWEEP_INTERVAL_MINUTES", "15"))
 CEO_STANDUP_HOUR = 7
 
 
@@ -306,6 +307,32 @@ async def _heartbeat_scheduler():
                 print(f"[heartbeat] Error for {bid[:8]}: {e}")
 
 
+async def _sla_scheduler():
+    """
+    SLA / escalation sweep every SLA_SWEEP_INTERVAL minutes — surfaces work that
+    has been sitting too long (stale pending recommendations, stuck tasks).
+    Follows the same HA-gated periodic pattern as _heartbeat_scheduler.
+    """
+    from backend.ha.leader import run_once
+    print(f"[scheduler] SLA sweep every {SLA_SWEEP_INTERVAL}min")
+    while True:
+        await asyncio.sleep(SLA_SWEEP_INTERVAL * 60)
+
+        # HA gate: one scheduler replica per time-bucket runs the sweep.
+        _bucket = int(time.time() // (SLA_SWEEP_INTERVAL * 60))
+        if not await run_once(f"sla:{_bucket}", ttl_seconds=SLA_SWEEP_INTERVAL * 60):
+            continue
+
+        try:
+            from backend.engines import sla_monitor
+            result = await sla_monitor.sweep_all()
+            total = result.get("stale_recommendations", 0) + result.get("stuck_tasks", 0)
+            if total > 0:
+                print(f"[sla] {result}")
+        except Exception as e:
+            print(f"[sla] Error: {e}")
+
+
 async def start_autonomous_scheduler():
     """
     Launch all scheduler tasks. Called from main.py lifespan.
@@ -340,6 +367,9 @@ async def start_autonomous_scheduler():
 
     # Heartbeat
     tasks.append(asyncio.create_task(_heartbeat_scheduler()))
+
+    # SLA / escalation sweep
+    tasks.append(asyncio.create_task(_sla_scheduler()))
 
     print(f"[scheduler] ✅ {len(tasks)} autonomous tasks started")
     return tasks

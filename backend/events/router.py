@@ -25,6 +25,7 @@ EVENT_SUBSCRIPTIONS: dict[str, list[str]] = {
 
     # Communication events
     E.SMS_RECEIVED:         ["coo"],               # COO routes to right dept or replies
+    "email.received":       ["coo"],               # COO routes inbound customer email
     E.CALL_MISSED:          ["cro"],               # CRO recovers missed call
     E.CALL_COMPLETED:       ["csd", "learning"],   # CSD scores, Learning captures insights
     E.REVIEW_RECEIVED:      ["csd"],               # CSD monitors
