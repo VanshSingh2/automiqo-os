@@ -13,3 +13,9 @@ build/
 .pytest_cache/
 
 .env
+
+
+# Test artifacts
+.coverage
+.pytest_cache/
+htmlcov/
