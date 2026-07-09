@@ -150,7 +150,7 @@
             },
             {
               "keyName": "business_id",
-              "keyValue": "={{ $('Extract Params').item.json.business_id }}",
+              "keyValue": "={{ $('Webhook').item.json.business_id }}",
               "condition": "eq"
             }
           ]

@@ -134,7 +134,7 @@
       "parameters": {
         "from": "={{ $env.TWILIO_PHONE_NUMBER }}",
         "to": "={{ $json.parameters.customer_phone }}",
-        "message": "Hi {{ $('Get Customer').item.json.name || 'there' }}, how was your recent visit? Share feedback: {{ $json.survey_url || '' }}. Thank you!"
+        "message": "Hi {{ $('Webhook').item.json.parameters.customer_name || 'there' }}, how was your recent visit? Share feedback: {{ $json.survey_url || '' }}. Thank you!"
       },
       "id": "sms-surv",
       "type": "n8n-nodes-base.twilio",
@@ -188,7 +188,7 @@
             },
             {
               "keyName": "business_id",
-              "keyValue": "={{ $('Extract Params').item.json.business_id }}",
+              "keyValue": "={{ $('Webhook').item.json.business_id }}",
               "condition": "eq"
             }
           ]
