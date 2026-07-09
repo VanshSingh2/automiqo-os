@@ -7,26 +7,47 @@ services:
       - "8000:8000"
     env_file:
       - ../.env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - N8N_WEBHOOK_BASE_URL=http://n8n:5678/webhook
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').getcode()==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: always
 
   frontend:
     image: automiqo-frontend:latest
     ports:
       - "3000:3000"
+    environment:
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      - backend
     restart: always
 
   redis:
     image: redis:7-alpine
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: always
 
   n8n:
     image: n8nio/n8n:latest
     ports:
       - "5678:5678"
+    environment:
+      - GENERIC_TIMEZONE=America/New_York
     volumes:
       - n8n_data:/home/node/.n8n
     restart: always
@@ -39,6 +60,9 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - backend
+      - frontend
     restart: always
 
 volumes:

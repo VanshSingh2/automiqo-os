@@ -7,17 +7,27 @@ services:
       dockerfile: docker/Dockerfile.backend
     ports:
       - "8000:8000"
-    environment:
-      - APP_ENV=development
     env_file:
       - ../.env
+    environment:
+      # Inside the compose network these override any localhost values in .env.
+      - REDIS_URL=redis://redis:6379
+      - N8N_WEBHOOK_BASE_URL=http://n8n:5678/webhook
     volumes:
       - ../backend:/app/backend
       - ../agents:/app/agents
       - ../shared:/app/shared
       - ../prompts:/app/prompts
+      - ../specialist_library:/app/specialist_library
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').getcode()==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
 
   frontend:
@@ -27,13 +37,21 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      # Server-side proxy target — MUST be the backend service name, not localhost.
+      - BACKEND_URL=http://backend:8000
+    depends_on:
+      - backend
     restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
 
   n8n:

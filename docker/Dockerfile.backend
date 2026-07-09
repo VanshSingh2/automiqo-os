@@ -9,6 +9,9 @@ COPY backend/ ./backend/
 COPY agents/ ./agents/
 COPY shared/ ./shared/
 COPY prompts/ ./prompts/
+# agency-agents specialist library (git submodule) — required by SpecialistCaller.
+# Ensure it is checked out before building: git submodule update --init --recursive
+COPY specialist_library/ ./specialist_library/
 
 ENV PYTHONPATH=/app
 

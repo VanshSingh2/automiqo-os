@@ -847,6 +847,119 @@ BEGIN
 END;
 $$;
 
+-- ============================================================================
+-- SCHEMA-DRIFT RECONCILIATION (tables the code uses that were missing here)
+-- ============================================================================
+
+-- Inter-agent / team chat (team_chat_api.py, events/agent_chat.py)
+CREATE TABLE IF NOT EXISTS agent_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  channel TEXT DEFAULT 'team',
+  from_agent TEXT,
+  from_role TEXT,
+  to_agent TEXT DEFAULT 'team',
+  message TEXT,
+  category TEXT DEFAULT 'update',
+  urgency TEXT DEFAULT 'normal',
+  related_event_id UUID,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- HR hiring pipeline (engines/hr_manager.py)
+CREATE TABLE IF NOT EXISTS applicants (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  name TEXT,
+  role TEXT,
+  email TEXT,
+  phone TEXT,
+  resume_text TEXT,
+  stage TEXT DEFAULT 'applied',
+  screen_score NUMERIC,
+  screen_notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Staff scheduling (engines/hr_manager.py)
+CREATE TABLE IF NOT EXISTS shifts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  staff_id UUID REFERENCES staff(id) ON DELETE CASCADE,
+  starts_at TIMESTAMPTZ,
+  ends_at TIMESTAMPTZ,
+  role TEXT,
+  status TEXT DEFAULT 'scheduled',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Bookkeeping / P&L (engines/accounting_engine.py)
+CREATE TABLE IF NOT EXISTS expenses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  amount NUMERIC NOT NULL DEFAULT 0,
+  category TEXT,
+  tax_category TEXT,
+  description TEXT,
+  vendor TEXT,
+  expense_date DATE DEFAULT CURRENT_DATE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Reputation / reviews (integrations/reputation_monitor.py)
+CREATE TABLE IF NOT EXISTS reviews (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  platform TEXT,
+  author TEXT,
+  rating NUMERIC,
+  text TEXT,
+  sentiment TEXT,
+  dedup_key TEXT,
+  responded BOOLEAN DEFAULT false,
+  review_date TIMESTAMPTZ,
+  ingested_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Agent disagreements / reasoned objections (agents/shared/tools.py, api/disagreements.py)
+CREATE TABLE IF NOT EXISTS disagreements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  disagreeing_agent TEXT NOT NULL,
+  directive_from TEXT NOT NULL,
+  directive_summary TEXT,
+  concern TEXT NOT NULL,
+  alternative_suggestion TEXT,
+  severity TEXT DEFAULT 'moderate',
+  status TEXT DEFAULT 'raised',
+  owner_response TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ
+);
+
+-- Column the HR engine reads but that was absent from the staff table.
+ALTER TABLE staff ADD COLUMN IF NOT EXISTS certifications JSONB DEFAULT '[]';
+
+-- Indexes for the tenant-scoped lookups the code performs.
+CREATE INDEX IF NOT EXISTS agent_messages_biz_created ON agent_messages(business_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS applicants_biz_stage       ON applicants(business_id, stage);
+CREATE INDEX IF NOT EXISTS shifts_biz_starts          ON shifts(business_id, starts_at);
+CREATE INDEX IF NOT EXISTS expenses_biz_date          ON expenses(business_id, expense_date);
+CREATE INDEX IF NOT EXISTS reviews_biz_dedup          ON reviews(business_id, dedup_key);
+CREATE INDEX IF NOT EXISTS disagreements_biz_status   ON disagreements(business_id, status);
+
+-- RLS: service_role full access (matches every other table in this schema).
+DO $$
+DECLARE t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['agent_messages','applicants','shifts','expenses','reviews','disagreements'] LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = t AND policyname = 'service_role_all') THEN
+      EXECUTE format('CREATE POLICY "service_role_all" ON %I FOR ALL TO service_role USING (true) WITH CHECK (true)', t);
+    END IF;
+  END LOOP;
+END $$;
+
 CREATE OR REPLACE VIEW sequence_stats AS
 SELECT
   business_id,
