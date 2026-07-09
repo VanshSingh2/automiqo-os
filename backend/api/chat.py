@@ -1,6 +1,5 @@
 import json
 import asyncio
-from uuid import UUID
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from shared.schemas import ChatRequest

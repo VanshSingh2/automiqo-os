@@ -3,10 +3,8 @@ Knowledge Gap Detector — identifies whether failures are caused by
 missing knowledge, broken prompts, missing workflows, or policy gaps.
 """
 import os
-import json
 from datetime import datetime, timezone, timedelta
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
 from backend.memory.supabase_client import get_supabase
 
 

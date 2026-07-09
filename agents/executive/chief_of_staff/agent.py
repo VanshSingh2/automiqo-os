@@ -1,8 +1,6 @@
-import os
 import json
 from uuid import UUID
 from datetime import datetime, timezone, timedelta
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents.base_agent import BaseAgent

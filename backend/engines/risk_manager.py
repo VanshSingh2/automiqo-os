@@ -11,7 +11,7 @@ Risk factors:
   - Recent failure rate for this workflow
 """
 from dataclasses import dataclass
-from datetime import datetime, timezone, time
+from datetime import datetime, timezone
 from backend.engines.policy_engine import POLICIES
 from backend.memory.supabase_client import get_supabase
 

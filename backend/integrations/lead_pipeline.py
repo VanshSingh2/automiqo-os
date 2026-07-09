@@ -2,8 +2,6 @@
 Full Lead Pipeline: Discover → Enrich → Score → Store → Report
 One function call runs the entire pipeline.
 """
-import asyncio
-from uuid import UUID
 from datetime import datetime, timezone
 
 from backend.integrations.lead_discovery import discover_leads

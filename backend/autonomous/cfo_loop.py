@@ -8,7 +8,6 @@ Proactively manages finances every day:
 - Generates daily financial snapshot → saves as report
 - Notifies CEO if revenue is off-track
 """
-import json
 from datetime import datetime, timezone, timedelta
 from uuid import UUID
 from backend.memory.supabase_client import get_supabase

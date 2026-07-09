@@ -144,6 +144,7 @@ async def modules_registry():
 async def get_modules(business_id: str):
     """Resolved module tree for a business (profile defaults + owner overrides)."""
     from backend.engines.business_blueprint import summary
+    from backend.memory.supabase_client import get_supabase
     sb = get_supabase()
     biz = sb.table("businesses").select("config,industry").eq("id", business_id).limit(1).execute().data
     if not biz:
@@ -165,6 +166,7 @@ class ModuleToggleRequest(BaseModel):
 async def set_module(business_id: str, req: ModuleToggleRequest):
     """Turn a department or a single manager on/off for this business."""
     from backend.engines.business_blueprint import summary, DEPARTMENTS
+    from backend.memory.supabase_client import get_supabase
     from fastapi import HTTPException
     if req.department not in DEPARTMENTS or req.department == "ceo":
         raise HTTPException(status_code=400, detail=f"Unknown department '{req.department}'")

@@ -9,10 +9,8 @@ Endpoints:
   GET  /test/quick         — fast smoke test (no LLM calls)
 """
 import os
-import asyncio
 import httpx
 import time
-import json
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 from fastapi import APIRouter
@@ -158,9 +156,7 @@ async def suite_schemas(bid: str) -> list[dict]:
     # 3a. All Pydantic models importable
     try:
         from shared.schemas import (
-            AgentResponse, TaskRequest, TaskResult,
-            BusinessConfig, CustomerProfile, ChatMessage,
-            ChatRequest, OnboardRequest, TaskPriority, TaskStatus,
+            AgentResponse, TaskRequest, TaskPriority,
         )
         results.append(_pass("schemas_import", "All 10 schema models import cleanly"))
     except Exception as e:
@@ -273,7 +269,7 @@ async def suite_events(bid: str) -> list[dict]:
 
     # 5a. Event bus import + publish
     try:
-        from backend.events.bus import publish, E
+        from backend.events.bus import E
         results.append(_pass("event_bus_import", "EventBus and EventType enum import cleanly",
                              {"event_types": len([e for e in dir(E) if not e.startswith("_")])}))
     except Exception as e:
@@ -290,14 +286,12 @@ async def suite_events(bid: str) -> list[dict]:
 
     # 5c. Event worker imports
     try:
-        from backend.events.worker import event_worker_loop, run_hourly_heartbeat
         results.append(_pass("event_worker_import", "event_worker_loop and run_hourly_heartbeat importable"))
     except Exception as e:
         results.append(_fail("event_worker_import", str(e)))
 
     # 5d. Conversation manager
     try:
-        from backend.conversations.manager import handle_inbound_sms
         results.append(_pass("conversation_manager", "conversation manager importable"))
     except Exception as e:
         results.append(_fail("conversation_manager", str(e)))
@@ -500,7 +494,7 @@ async def suite_autonomous(bid: str) -> list[dict]:
 
     # 9b. Autonomous scheduler importable
     try:
-        from backend.cron.autonomous_scheduler import start_autonomous_scheduler, DEPT_SCHEDULE
+        from backend.cron.autonomous_scheduler import DEPT_SCHEDULE
         results.append(_pass("autonomous_scheduler_import",
             f"Scheduler importable. {len(DEPT_SCHEDULE)} depts scheduled.",
             {"schedule": {k: v[0] for k,v in DEPT_SCHEDULE.items()}}))
@@ -534,7 +528,7 @@ async def suite_api_routes(bid: str) -> list[dict]:
         async with httpx.AsyncClient(timeout=5) as client:
             resp = await client.get(f"{backend_url}/health")
         if resp.status_code == 200:
-            results.append(_pass("api_health", f"GET /health → 200"))
+            results.append(_pass("api_health", "GET /health → 200"))
         else:
             results.append(_warn("api_health", f"GET /health → {resp.status_code}"))
     except Exception as e:

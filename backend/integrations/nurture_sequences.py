@@ -10,7 +10,6 @@ Sequences:
 
 Each step: check if they responded → if yes, stop → if no, send next message.
 """
-import asyncio
 from datetime import datetime, timezone, timedelta
 from uuid import UUID
 from backend.memory.supabase_client import get_supabase

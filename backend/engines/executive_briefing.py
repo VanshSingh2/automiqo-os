@@ -33,7 +33,6 @@ class ExecutiveBriefingGenerator:
         from backend.engines.opportunity_engine import opportunity_engine
         from backend.engines.prediction_engine import prediction_engine
         from backend.engines.strategy_planner import strategy_planner
-        from backend.engines.risk_manager import risk_manager
 
         sb = get_supabase()
         biz = sb.table("businesses").select("name,industry").eq("id", business_id).limit(1).execute()

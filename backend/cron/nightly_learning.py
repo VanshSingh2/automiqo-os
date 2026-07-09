@@ -1,5 +1,4 @@
 """10pm daily: runs learning loop for all active businesses."""
-import os
 import asyncio
 from backend.memory.supabase_client import get_supabase
 from agents.departments.learning.agent import LearningDirectorAgent

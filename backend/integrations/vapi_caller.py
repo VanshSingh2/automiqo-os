@@ -12,8 +12,6 @@ Each call uses a pre-configured VAPI assistant with the business persona.
 """
 import os
 import httpx
-import json
-from typing import Optional
 from datetime import datetime, timezone
 
 VAPI_BASE = "https://api.vapi.ai"

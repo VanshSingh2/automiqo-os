@@ -4,7 +4,6 @@ Handles inbound SMS → qualifies → books Cal.com appointment directly in the 
 State: new → contacted → replied → qualifying → interested → booked | not_now | dead
 """
 import os
-import json
 import httpx
 from datetime import datetime, timezone
 from backend.memory.supabase_client import get_supabase

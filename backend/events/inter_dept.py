@@ -30,10 +30,9 @@ Decision table (what's low-risk = auto):
   - Make outbound call                   → APPROVAL
   - Change pricing or offer              → APPROVAL
 """
-import json
 from datetime import datetime, timezone
 from typing import Literal
-from backend.events.bus import publish, E
+from backend.events.bus import publish
 from backend.memory.supabase_client import get_supabase
 
 DeptKey = Literal["coo", "cro", "cmo", "cfo", "cto", "csd", "learning", "ceo"]

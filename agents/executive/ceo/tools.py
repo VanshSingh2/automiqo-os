@@ -1,4 +1,3 @@
-import os
 from uuid import UUID
 from langchain_core.tools import tool
 
@@ -96,7 +95,6 @@ def make_ceo_tools(business_id: UUID):
         steps is a list of dicts: [{department, action, workflow, parameters}]
         """
         from backend.memory.supabase_client import get_supabase
-        from datetime import datetime, timezone
         sb = get_supabase()
         plan_id = None
         tasks_created = []

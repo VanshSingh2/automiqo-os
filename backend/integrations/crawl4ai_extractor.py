@@ -5,7 +5,6 @@ Cost per extraction: ~$0.0002 (GPT-4o-mini).
 """
 import os
 import json
-import asyncio
 from typing import Optional
 from pydantic import BaseModel
 

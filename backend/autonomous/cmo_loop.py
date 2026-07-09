@@ -7,7 +7,6 @@ Proactively works on marketing every day:
 - Checks social posting schedule
 - Reviews experiment results
 """
-import json
 from datetime import datetime, timezone, timedelta
 from uuid import UUID
 from backend.memory.supabase_client import get_supabase

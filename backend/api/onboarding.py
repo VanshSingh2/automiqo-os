@@ -5,7 +5,6 @@ Onboarding v2 — captures the full business profile so every agent operates
 knowledge base (pgvector) for semantic recall.
 """
 from fastapi import APIRouter, HTTPException
-from uuid import UUID
 from shared.schemas import OnboardRequest, OnboardUpdateRequest
 from backend.memory.supabase_client import get_supabase
 

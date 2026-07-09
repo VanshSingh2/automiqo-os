@@ -2,7 +2,6 @@
 Cost Optimizer — optimizes model routing, latency, token usage, and infrastructure cost.
 Decides which model to use for each task based on complexity vs cost tradeoff.
 """
-import os
 from datetime import datetime, timezone, timedelta
 from backend.memory.supabase_client import get_supabase
 

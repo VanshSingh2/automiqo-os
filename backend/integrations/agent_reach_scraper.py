@@ -15,7 +15,6 @@ import asyncio
 import json
 import re
 import shutil
-import subprocess
 from typing import Optional
 
 from agent_reach.utils.process import utf8_subprocess_env

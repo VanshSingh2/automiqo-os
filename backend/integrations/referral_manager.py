@@ -1,8 +1,6 @@
 """
 Referral Manager — generates unique referral codes, tracks conversions, credits referrers.
 """
-import os
-import hashlib
 import random
 import string
 from datetime import datetime, timezone

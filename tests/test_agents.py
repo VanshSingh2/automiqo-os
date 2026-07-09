@@ -36,17 +36,29 @@ import agents.departments.cmo.agent   # noqa: F401
 import agents.departments.cfo.agent   # noqa: F401
 
 
+def _mock_llm(summary: str):
+    """A stand-in LLM whose ainvoke returns a fixed JSON response."""
+    mock_llm = MagicMock()
+    mock_resp = MagicMock()
+    mock_resp.content = f'{{"status": "ok", "summary": "{summary}", "metrics": {{}}, "recommendations": []}}'
+    mock_llm.ainvoke = AsyncMock(return_value=mock_resp)
+    return mock_llm
+
+
 @pytest.mark.asyncio
 async def test_cmo_agent_returns_response():
+    from agents.base_agent import BaseAgent
     mock_sb = MagicMock()
+    # Any query chain resolves to an empty result set.
     mock_sb.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = []
+    mock_sb.table.return_value.select.return_value.eq.return_value.gte.return_value.execute.return_value.data = []
+    mock_llm = _mock_llm("No active campaigns")
+    # LLM construction now lives in BaseAgent._build_dept_llm; specialist consults
+    # are stubbed so the test makes no network calls.
     with patch("agents.departments.cmo.agent.get_supabase", return_value=mock_sb), \
-         patch("agents.departments.cmo.agent.ChatOpenAI") as MockLLM:
-        mock_llm = MagicMock()
-        mock_resp = MagicMock()
-        mock_resp.content = '{"status": "ok", "summary": "No active campaigns", "metrics": {}, "recommendations": []}'
-        mock_llm.ainvoke = AsyncMock(return_value=mock_resp)
-        MockLLM.return_value = mock_llm
+         patch.object(BaseAgent, "_build_dept_llm", return_value=mock_llm), \
+         patch.object(BaseAgent, "consult_specialists_parallel", AsyncMock(return_value={})), \
+         patch.object(BaseAgent, "consult_specialist", AsyncMock(return_value="")):
         from agents.departments.cmo.agent import CMOAgent
         agent = CMOAgent(uuid4())
         resp = await agent.run("How are our campaigns performing?")
@@ -55,15 +67,14 @@ async def test_cmo_agent_returns_response():
 
 @pytest.mark.asyncio
 async def test_cfo_agent_returns_response():
+    from agents.base_agent import BaseAgent
     mock_sb = MagicMock()
     mock_sb.table.return_value.select.return_value.eq.return_value.gte.return_value.execute.return_value.data = []
+    mock_llm = _mock_llm("Revenue tracking")
     with patch("agents.departments.cfo.agent.get_supabase", return_value=mock_sb), \
-         patch("agents.departments.cfo.agent.ChatOpenAI") as MockLLM:
-        mock_llm = MagicMock()
-        mock_resp = MagicMock()
-        mock_resp.content = '{"status": "ok", "summary": "Revenue tracking", "metrics": {}, "recommendations": []}'
-        mock_llm.ainvoke = AsyncMock(return_value=mock_resp)
-        MockLLM.return_value = mock_llm
+         patch.object(BaseAgent, "_build_dept_llm", return_value=mock_llm), \
+         patch.object(BaseAgent, "consult_specialists_parallel", AsyncMock(return_value={})), \
+         patch.object(BaseAgent, "consult_specialist", AsyncMock(return_value="")):
         from agents.departments.cfo.agent import CFOAgent
         agent = CFOAgent(uuid4())
         resp = await agent.run("What is our revenue this week?")

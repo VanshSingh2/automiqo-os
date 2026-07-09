@@ -17,7 +17,6 @@ All writes are best-effort: if Supabase/the table is missing, chat simply
 no-ops and never breaks the core agent flow.
 """
 from __future__ import annotations
-from datetime import datetime, timezone
 from typing import Optional
 
 

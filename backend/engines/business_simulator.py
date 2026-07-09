@@ -4,10 +4,8 @@ Business Simulator — simulate pricing, staffing, expansion, marketing decision
 "What if we added a 3rd staff member?" → simulate utilization and ROI.
 """
 import os
-import json
 from datetime import datetime, timezone, timedelta
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
 from backend.memory.supabase_client import get_supabase
 
 

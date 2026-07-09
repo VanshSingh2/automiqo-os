@@ -1,5 +1,4 @@
 from uuid import UUID
-from datetime import datetime, timezone
 from backend.memory.supabase_client import get_supabase
 
 

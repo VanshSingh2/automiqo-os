@@ -9,9 +9,7 @@ Usage:
     if result.blocked: raise approval needed
     if result.auto_approved: proceed
 """
-import os
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
 from backend.memory.supabase_client import get_supabase
 
 

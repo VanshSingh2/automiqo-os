@@ -5,7 +5,6 @@ Layer 1 of the lead pipeline.
 import os
 import httpx
 import asyncio
-from typing import Optional
 
 
 SERPER_KEY = lambda: os.getenv("SERPER_API_KEY", "")

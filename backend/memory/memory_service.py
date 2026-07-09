@@ -18,8 +18,7 @@ If you later want a true temporal knowledge graph, the lightest path is
 Graphiti with the FalkorDB driver (a Redis module — you already run Redis —
 ~50MB) instead of Neo4j. See docs/memory.md.
 """
-from datetime import datetime, timezone, timedelta
-from uuid import UUID
+from datetime import datetime, timezone
 from backend.memory.supabase_client import get_supabase
 
 

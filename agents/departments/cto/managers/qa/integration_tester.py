@@ -1,7 +1,6 @@
 """Integration Tester — validates Twilio, Vapi, Cal.com, Stripe, Supabase, Redis, AI providers."""
 import json
 import os
-import asyncio
 from uuid import UUID
 from langchain_core.messages import HumanMessage, SystemMessage
 from agents.base_agent import BaseAgent

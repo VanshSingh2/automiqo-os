@@ -7,7 +7,6 @@ review-API needed. Stores reviews in the `reviews` table, flags negatives,
 and lets CSD act on them.
 """
 import os
-import re
 import httpx
 from datetime import datetime, timezone
 from backend.memory.supabase_client import get_supabase

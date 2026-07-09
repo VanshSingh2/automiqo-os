@@ -1,7 +1,5 @@
 import os
 import json
-import asyncio
-import httpx
 import redis.asyncio as aioredis
 
 _redis = None

@@ -4,19 +4,23 @@ The LLM decides the action, not hardcoded rules.
 Handler returns: {auto_fire: [{workflow, params}], queue_for_approval: [{workflow, params, reason}]}
 """
 import json
-import os
 from datetime import datetime, timezone, timedelta
 from backend.events.router import requires_approval
 from backend.memory.supabase_client import get_supabase
+from backend.security.sanitize import wrap_untrusted
 
 
 async def _think(agent_class, business_id: str, event_type: str, context: dict) -> dict:
     """Ask an agent to think about an event and decide what to do."""
     try:
         agent = agent_class(business_id)
+        # Event context can carry UNTRUSTED external content (inbound SMS bodies,
+        # call transcripts, review text, scraped lead data). Wrap it as data-only
+        # so a prompt-injection payload can't hijack the agent (review finding B3).
+        untrusted = wrap_untrusted(json.dumps(context, default=str)[:1500], label="business event data")
         question = (
             f"EVENT: {event_type}\n"
-            f"CONTEXT: {json.dumps(context, default=str)[:1000]}\n\n"
+            f"CONTEXT:{untrusted}\n\n"
             f"You just received this business event. Think about it carefully.\n"
             f"What should you do RIGHT NOW autonomously?\n"
             f"Return JSON: {{\"decision\": \"...\", \"actions\": [{{\"workflow\": \"...\", \"parameters\": {{}}, \"reason\": \"...\", \"urgency\": \"high|normal|low\"}}], \"notify_depts\": []}}"
@@ -242,7 +246,6 @@ async def handle_cto(business_id: str, event_type: str, payload: dict) -> None:
 
 
 async def handle_learning(business_id: str, event_type: str, payload: dict) -> None:
-    from agents.departments.learning.agent import LearningDirectorAgent
     from backend.events.bus import E
 
     if event_type == E.CALL_COMPLETED:

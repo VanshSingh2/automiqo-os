@@ -4,9 +4,7 @@ Every significant action in the OS fires an event here.
 All dept agents listen and react autonomously.
 """
 import json
-import os
 from datetime import datetime, timezone
-from uuid import UUID
 
 
 # ── Event Types ───────────────────────────────────────────────

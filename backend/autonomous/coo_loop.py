@@ -7,7 +7,6 @@ Proactively manages operations without waiting for events:
 - Logs no-shows from yesterday
 - Queues reminders for today's bookings
 """
-import json
 from datetime import datetime, timezone, timedelta
 from uuid import UUID
 from backend.memory.supabase_client import get_supabase

@@ -3,11 +3,9 @@ Prediction Engine — forecasts revenue, no-shows, lead volume, call volume, and
 Uses simple trend extrapolation + LLM analysis.
 """
 import os
-import json
 from datetime import datetime, timezone, timedelta
 from backend.memory.supabase_client import get_supabase
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
 
 
 class PredictionEngine:

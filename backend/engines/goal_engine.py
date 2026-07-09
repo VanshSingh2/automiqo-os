@@ -2,7 +2,7 @@
 Goal Engine — every department optimizes measurable goals instead of isolated tasks.
 Each dept has goals. Every action is evaluated against whether it moves the needle.
 """
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from backend.memory.supabase_client import get_supabase
 
 

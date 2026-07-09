@@ -1,7 +1,6 @@
 """
 Growth API — outbound calling, nurture sequences, referrals.
 """
-from uuid import UUID
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional

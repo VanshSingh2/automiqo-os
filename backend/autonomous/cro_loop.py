@@ -94,7 +94,7 @@ async def run_cro_daily_loop(business_id: str) -> dict:
             "appointment_id": appt["id"],
             "service": appt.get("service", ""),
             "trigger": "post_visit_24h",
-        }, f"CRO daily loop: upsell opportunity 24h after visit")
+        }, "CRO daily loop: upsell opportunity 24h after visit")
         approvals_queued.append(f"upsell offer queued for appt {appt['id']}")
 
     # ── 5. MISSED CALLS FROM YESTERDAY ───────────────────────

@@ -3,7 +3,6 @@ Lead Scorer v2 — 0-100 fit score with social signals.
 Higher score = business needs Automiqo most.
 Backwards-compatible: score_and_prioritize() still works for existing code.
 """
-from typing import Optional
 
 BASIC_BOOKING_PLATFORMS = ["calendly", "squarespace", "wix", "square"]
 ADVANCED_BOOKING_PLATFORMS = ["mindbody", "vagaro", "fresha", "jane_app", "boulevard", "zenoti"]

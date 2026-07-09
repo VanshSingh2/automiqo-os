@@ -1,8 +1,6 @@
 """7am daily: CEO standup — fires daily.standup event for all active businesses."""
-import os
 import asyncio
 from backend.memory.supabase_client import get_supabase
-from uuid import UUID
 
 
 async def run_morning_briefing():

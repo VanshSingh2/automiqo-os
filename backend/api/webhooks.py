@@ -2,7 +2,7 @@
 Webhooks — inbound events from Telnyx (SMS) and VAPI (calls).
 Each webhook publishes to the event bus for autonomous agent handling.
 """
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 router = APIRouter()
