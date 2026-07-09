@@ -15,6 +15,7 @@ Schedule (EST):
   07:00 — CEO   (daily standup via daily.standup event)
 """
 import os
+import time
 import asyncio
 from datetime import datetime, timezone, timedelta
 from backend.memory.supabase_client import get_supabase
@@ -118,6 +119,16 @@ async def _dept_scheduler(dept: str, target_hour_est: int, fn_path: str):
         wait = _seconds_until_next_hour(target_hour_est, now)
         await asyncio.sleep(wait)
 
+        # HA outer gate: with multiple scheduler replicas, exactly ONE fires this
+        # department for this calendar day cluster-wide. Fail-open (returns True
+        # if Redis is down) so a single node still runs.
+        day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        from backend.ha.leader import run_once
+        if not await run_once(f"dept:{dept}:{day}", ttl_seconds=23 * 3600):
+            print(f"[scheduler] {dept.upper()} already fired elsewhere for {day} — skipping")
+            await asyncio.sleep(23 * 3600)
+            continue
+
         businesses = await _get_active_businesses_with_config()
         if not businesses:
             continue
@@ -154,6 +165,13 @@ async def _ceo_standup_scheduler():
         wait = _seconds_until_next_hour(CEO_STANDUP_HOUR, now)
         await asyncio.sleep(wait)
 
+        # HA gate: exactly one scheduler replica fires the standup per day.
+        day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        from backend.ha.leader import run_once
+        if not await run_once(f"standup:{day}", ttl_seconds=23 * 3600):
+            await asyncio.sleep(23 * 3600)
+            continue
+
         businesses = await _get_all_active_businesses()
         print(f"[scheduler] ⏰ CEO daily standup firing for {len(businesses)} business(es)")
         for bid in businesses:
@@ -189,8 +207,16 @@ async def _urgent_scanner():
     from backend.memory.supabase_client import get_supabase
     print(f"[scheduler] Urgent scanner every {URGENT_SCAN_INTERVAL}min")
 
+    import time as _time
+    from backend.ha.leader import run_once
     while True:
         await asyncio.sleep(URGENT_SCAN_INTERVAL * 60)
+
+        # HA gate: one scheduler replica per time-bucket handles this scan.
+        _bucket = int(_time.time() // (URGENT_SCAN_INTERVAL * 60))
+        if not await run_once(f"urgent:{_bucket}", ttl_seconds=URGENT_SCAN_INTERVAL * 60):
+            continue
+
         businesses = await _get_all_active_businesses()
 
         for bid in businesses:
@@ -259,9 +285,16 @@ async def _urgent_scanner():
 async def _heartbeat_scheduler():
     """Heartbeat every HEARTBEAT_INTERVAL minutes — scans all depts for urgent work."""
     from backend.events.worker import run_hourly_heartbeat
+    from backend.ha.leader import run_once
     print(f"[scheduler] Heartbeat every {HEARTBEAT_INTERVAL}min")
     while True:
         await asyncio.sleep(HEARTBEAT_INTERVAL * 60)
+
+        # HA gate: one scheduler replica per hourly bucket runs the heartbeat.
+        _hb_bucket = datetime.now(timezone.utc).strftime("%Y-%m-%d-%H")
+        if not await run_once(f"heartbeat:{_hb_bucket}", ttl_seconds=HEARTBEAT_INTERVAL * 60):
+            continue
+
         businesses = await _get_all_active_businesses()
         for bid in businesses:
             try:

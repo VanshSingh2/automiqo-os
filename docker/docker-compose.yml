@@ -1,16 +1,25 @@
 version: "3.9"
 
 services:
+  # ── API server (ROLE=web) ─────────────────────────────────────────────────
+  # HA note: the app is split into roles. `backend` serves the API only; the
+  # `worker` and `scheduler` services below run the background work. Scale
+  # `worker` to N replicas freely (Redis blpop is N-safe); run 1+ `scheduler`
+  # replicas — run_once locks ensure each scheduled unit fires exactly once
+  # cluster-wide, with automatic failover if one dies.
+  # To run everything in ONE container instead, drop worker+scheduler and set
+  # this service's ROLE=all (the historical single-node mode).
   backend:
     build:
       context: ..
       dockerfile: docker/Dockerfile.backend
+    image: automiqo-backend:local
     ports:
       - "8000:8000"
     env_file:
       - ../.env
     environment:
-      # Inside the compose network these override any localhost values in .env.
+      - ROLE=web
       - REDIS_URL=redis://redis:6379
       - N8N_WEBHOOK_BASE_URL=http://n8n:5678/webhook
     volumes:
@@ -28,6 +37,56 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
+    restart: unless-stopped
+
+  # ── Task/event workers (ROLE=worker) — scale to N replicas safely ─────────
+  worker:
+    image: automiqo-backend:local
+    # Same image/entrypoint as backend; main.py's lifespan reads ROLE and starts
+    # only the worker loops here (the uvicorn server runs but takes no traffic —
+    # no port is published).
+    env_file:
+      - ../.env
+    environment:
+      - ROLE=worker
+      - REDIS_URL=redis://redis:6379
+      - N8N_WEBHOOK_BASE_URL=http://n8n:5678/webhook
+    volumes:
+      - ../backend:/app/backend
+      - ../agents:/app/agents
+      - ../shared:/app/shared
+      - ../prompts:/app/prompts
+      - ../specialist_library:/app/specialist_library
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    restart: unless-stopped
+
+  # ── Autonomous + manager scheduler (ROLE=scheduler) ───────────────────────
+  scheduler:
+    image: automiqo-backend:local
+    # Same image/entrypoint as backend; main.py's lifespan reads ROLE and starts
+    # only the autonomous + manager schedulers here. Run 1+ replicas — run_once
+    # locks make each scheduled unit fire exactly once cluster-wide.
+    env_file:
+      - ../.env
+    environment:
+      - ROLE=scheduler
+      - REDIS_URL=redis://redis:6379
+      - N8N_WEBHOOK_BASE_URL=http://n8n:5678/webhook
+    volumes:
+      - ../backend:/app/backend
+      - ../agents:/app/agents
+      - ../shared:/app/shared
+      - ../prompts:/app/prompts
+      - ../specialist_library:/app/specialist_library
+    depends_on:
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
     restart: unless-stopped
 
   frontend:

@@ -141,3 +141,133 @@ async def test_llm_judge_high_score_allows(monkeypatch):
         "biz-1", "send_reminder_24h", {"customer_id": "c1", "appointment_id": "a1"}, "reminder")
     assert verdict["verdict"] == "allow"
     assert verdict["approved"] is True
+
+
+
+# ── self-consistency (multi-sample judge for risky actions) ─────────────────
+async def test_self_consistency_disagreement_escalates(monkeypatch):
+    # Judge ON, high-risk (non-blast-radius) workflow -> samples N times.
+    # Disagreeing samples (straddle the 0.5 threshold) -> force escalate.
+    # Neutralize the autonomy governor so the JUDGE is the deciding factor.
+    monkeypatch.setenv("AUTONOMY_MIN_RUNS", "0")
+    monkeypatch.setenv("VERIFY_LLM_JUDGE", "true")
+    monkeypatch.setenv("VERIFY_CONSISTENCY_SAMPLES", "3")
+
+    fake = AsyncMock(side_effect=[(0.9, "safe"), (0.1, "risky"), (0.85, "safe")])
+    monkeypatch.setattr(verification_engine, "_llm_judge", fake)
+
+    verdict = await verification_engine.evaluate_action(
+        "biz-1", "reactivate_dormant_member", {"reason": "dormant 90d"}, "reactivation"
+    )
+    assert verdict["approved"] is False
+    assert verdict["verdict"] in ("escalate", "block")
+    assert "judge_disagreement" in verdict["reasons"]
+    # The judge was sampled multiple times, not once.
+    assert fake.await_count == 3
+
+
+async def test_self_consistency_low_sample_escalates(monkeypatch):
+    # One very-low sample (below 0.15) with no disagreement -> judge_low.
+    monkeypatch.setenv("AUTONOMY_MIN_RUNS", "0")
+    monkeypatch.setenv("VERIFY_LLM_JUDGE", "true")
+    monkeypatch.setenv("VERIFY_CONSISTENCY_SAMPLES", "3")
+
+    fake = AsyncMock(side_effect=[(0.1, "no"), (0.05, "no"), (0.12, "no")])
+    monkeypatch.setattr(verification_engine, "_llm_judge", fake)
+
+    verdict = await verification_engine.evaluate_action(
+        "biz-1", "reactivate_dormant_member", {"reason": "dormant"}, "reactivation"
+    )
+    assert verdict["approved"] is False
+    assert "judge_low" in verdict["reasons"]
+
+
+async def test_self_consistency_agreement_allows(monkeypatch):
+    # All samples agree it's safe -> use their mean -> allow.
+    # Neutralize the autonomy governor (it would otherwise escalate a high-risk
+    # workflow with no track record) so the JUDGE agreement is what allows.
+    monkeypatch.setenv("AUTONOMY_MIN_RUNS", "0")
+    monkeypatch.setenv("VERIFY_LLM_JUDGE", "true")
+    monkeypatch.setenv("VERIFY_CONSISTENCY_SAMPLES", "3")
+
+    fake = AsyncMock(side_effect=[(0.9, "ok"), (0.88, "ok"), (0.92, "ok")])
+    monkeypatch.setattr(verification_engine, "_llm_judge", fake)
+
+    verdict = await verification_engine.evaluate_action(
+        "biz-1", "reactivate_dormant_member", {"reason": "dormant"}, "reactivation"
+    )
+    assert verdict["verdict"] == "allow"
+    assert verdict["approved"] is True
+    assert fake.await_count == 3
+
+
+async def test_low_risk_judge_single_sample(monkeypatch):
+    # Low-risk workflow keeps single-call behavior even with sampling configured.
+    monkeypatch.setenv("VERIFY_LLM_JUDGE", "true")
+    monkeypatch.setenv("VERIFY_CONSISTENCY_SAMPLES", "5")
+
+    fake = AsyncMock(return_value=(0.95, "fine"))
+    monkeypatch.setattr(verification_engine, "_llm_judge", fake)
+
+    verdict = await verification_engine.evaluate_action(
+        "biz-1", "send_reminder_24h", {"customer_id": "c1", "appointment_id": "a1"}, "reminder"
+    )
+    assert verdict["verdict"] == "allow"
+    assert fake.await_count == 1
+
+
+# ── grounding check (anti-hallucination on referenced entity ids) ───────────
+_REAL_UUID = "12345678-1234-1234-1234-1234567890ab"
+
+
+async def test_grounding_ungrounded_id_escalates(make_sb, monkeypatch):
+    # Real-looking UUID that does NOT exist in the DB -> escalate + reason.
+    monkeypatch.setenv("VERIFY_GROUNDING", "true")
+    sb = make_sb({"customers": []})  # customers table returns no rows
+    with patch("backend.memory.supabase_client.get_supabase", return_value=sb):
+        verdict = await verification_engine.evaluate_action(
+            "biz-1", "send_reminder_24h", {"customer_id": _REAL_UUID}, "reminder"
+        )
+    assert verdict["approved"] is False
+    assert verdict["verdict"] in ("escalate", "block")
+    assert "ungrounded_customer_id" in verdict["reasons"]
+
+
+async def test_grounding_valid_id_allows(make_sb, monkeypatch):
+    # Real-looking UUID that DOES exist -> grounded -> allow.
+    monkeypatch.setenv("VERIFY_GROUNDING", "true")
+    sb = make_sb({"customers": [{"id": _REAL_UUID}]})
+    with patch("backend.memory.supabase_client.get_supabase", return_value=sb):
+        verdict = await verification_engine.evaluate_action(
+            "biz-1", "send_reminder_24h", {"customer_id": _REAL_UUID}, "reminder"
+        )
+    assert verdict["verdict"] == "allow"
+    assert verdict["approved"] is True
+    assert not any("ungrounded" in r for r in verdict["reasons"])
+
+
+async def test_grounding_skips_dummy_id_allows(make_sb, monkeypatch):
+    # Short/dummy ids ("c1"/"a1") are skipped -> existing allow behavior kept,
+    # and the DB is never queried for them.
+    monkeypatch.setenv("VERIFY_GROUNDING", "true")
+    sb = make_sb({"customers": []})
+    with patch("backend.memory.supabase_client.get_supabase", return_value=sb):
+        verdict = await verification_engine.evaluate_action(
+            "biz-1", "send_reminder_24h", {"customer_id": "c1", "appointment_id": "a1"}, "reminder"
+        )
+    assert verdict["verdict"] == "allow"
+    assert verdict["approved"] is True
+    # Grounding never touched the customers table for a dummy id.
+    assert "customers" not in sb.queries
+
+
+async def test_grounding_disabled_skips_check(make_sb, monkeypatch):
+    # VERIFY_GROUNDING=false -> grounding does not run even for a real UUID.
+    monkeypatch.setenv("VERIFY_GROUNDING", "false")
+    sb = make_sb({"customers": []})
+    with patch("backend.memory.supabase_client.get_supabase", return_value=sb):
+        verdict = await verification_engine.evaluate_action(
+            "biz-1", "send_reminder_24h", {"customer_id": _REAL_UUID}, "reminder"
+        )
+    assert verdict["verdict"] == "allow"
+    assert "customers" not in sb.queries

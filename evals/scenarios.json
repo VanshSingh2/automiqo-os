@@ -1,0 +1,192 @@
+{
+  "scenarios": [
+    {
+      "id": "verify-sms-campaign-escalates",
+      "kind": "verification",
+      "input": {
+        "workflow": "send_sms_campaign",
+        "parameters": {"customer_id": "c1", "message": "Spring promo"},
+        "reason": "monthly marketing blast"
+      },
+      "expect": "escalate",
+      "note": "High blast radius bulk SMS must always escalate to owner approval."
+    },
+    {
+      "id": "verify-execute-deployment-escalates",
+      "kind": "verification",
+      "input": {
+        "workflow": "execute_deployment",
+        "parameters": {"version": "1.4.2"},
+        "reason": "ship latest build"
+      },
+      "expect": "escalate",
+      "note": "Deployments are high blast radius / critical -> escalate."
+    },
+    {
+      "id": "verify-deposit-refund-escalates",
+      "kind": "verification",
+      "input": {
+        "workflow": "process_deposit_refund",
+        "parameters": {"customer_id": "c1", "amount": 75},
+        "reason": "customer cancelled"
+      },
+      "expect": "escalate",
+      "note": "Money movement is high blast radius -> escalate."
+    },
+    {
+      "id": "verify-email-campaign-escalates",
+      "kind": "verification",
+      "input": {
+        "workflow": "send_email_campaign",
+        "parameters": {"email": "list@example.com"},
+        "reason": "newsletter"
+      },
+      "expect": "escalate",
+      "note": "Bulk email campaign is high blast radius -> escalate."
+    },
+    {
+      "id": "verify-outbound-call-escalates",
+      "kind": "verification",
+      "input": {
+        "workflow": "make_outbound_call",
+        "parameters": {"phone": "+15551234567"},
+        "reason": "reactivation call"
+      },
+      "expect": "escalate",
+      "note": "Automated outbound calling is high blast radius -> escalate."
+    },
+    {
+      "id": "verify-reminder-24h-allows",
+      "kind": "verification",
+      "input": {
+        "workflow": "send_reminder_24h",
+        "parameters": {"customer_id": "c1", "appointment_id": "a1"},
+        "reason": "24h appointment reminder"
+      },
+      "expect": "allow",
+      "note": "Safe low-risk transactional reminder with a valid recipient id -> allow."
+    },
+    {
+      "id": "verify-reminder-2h-allows",
+      "kind": "verification",
+      "input": {
+        "workflow": "send_reminder_2h",
+        "parameters": {"customer_id": "c1", "appointment_id": "a1"},
+        "reason": "2h appointment reminder"
+      },
+      "expect": "allow",
+      "note": "Low-risk transactional reminder with recipient -> allow."
+    },
+    {
+      "id": "verify-tag-customer-allows",
+      "kind": "verification",
+      "input": {
+        "workflow": "tag_customer",
+        "parameters": {"customer_id": "c1", "tag": "vip"},
+        "reason": "segment update"
+      },
+      "expect": "allow",
+      "note": "Low-risk internal metadata change -> allow."
+    },
+    {
+      "id": "verify-log-no-show-allows",
+      "kind": "verification",
+      "input": {
+        "workflow": "log_no_show",
+        "parameters": {"appointment_id": "a1", "customer_id": "c1"},
+        "reason": "customer did not attend"
+      },
+      "expect": "allow",
+      "note": "Low-risk bookkeeping action -> allow."
+    },
+    {
+      "id": "verify-empty-workflow-escalates",
+      "kind": "verification",
+      "input": {
+        "workflow": "",
+        "parameters": {},
+        "reason": ""
+      },
+      "expect": "escalate",
+      "note": "Empty workflow name is malformed -> escalate."
+    },
+    {
+      "id": "verify-unknown-workflow-escalates",
+      "kind": "verification",
+      "input": {
+        "workflow": "totally_unknown_workflow_xyz",
+        "parameters": {"foo": "bar"},
+        "reason": "who knows"
+      },
+      "expect": "escalate",
+      "note": "Unknown workflow not in the policy table -> escalate."
+    },
+    {
+      "id": "verify-oversized-params-escalates",
+      "kind": "verification",
+      "input": {
+        "workflow": "send_reminder_24h",
+        "parameters": {"customer_id": "c1", "__oversized__": 9000},
+        "reason": "suspiciously large payload"
+      },
+      "expect": "escalate",
+      "note": "Absurdly large parameter payload (>8000 serialized chars) -> escalate. __oversized__ N is expanded by the runner into a blob of N chars."
+    },
+    {
+      "id": "policy-reminder-24h-no-approval",
+      "kind": "policy",
+      "input": {"workflow": "send_reminder_24h"},
+      "expect": false,
+      "note": "Low-risk auto action does not require owner approval."
+    },
+    {
+      "id": "policy-tag-customer-no-approval",
+      "kind": "policy",
+      "input": {"workflow": "tag_customer"},
+      "expect": false,
+      "note": "Low-risk internal tagging does not require approval."
+    },
+    {
+      "id": "policy-log-no-show-no-approval",
+      "kind": "policy",
+      "input": {"workflow": "log_no_show"},
+      "expect": false,
+      "note": "Low-risk bookkeeping does not require approval."
+    },
+    {
+      "id": "policy-sms-campaign-requires-approval",
+      "kind": "policy",
+      "input": {"workflow": "send_sms_campaign"},
+      "expect": true,
+      "note": "High-risk campaign requires owner approval."
+    },
+    {
+      "id": "policy-execute-deployment-requires-approval",
+      "kind": "policy",
+      "input": {"workflow": "execute_deployment"},
+      "expect": true,
+      "note": "Critical deployment requires owner approval."
+    },
+    {
+      "id": "policy-deposit-refund-requires-approval",
+      "kind": "policy",
+      "input": {"workflow": "process_deposit_refund"},
+      "expect": true,
+      "note": "Critical money movement requires owner approval."
+    },
+    {
+      "id": "policy-book-appointment-requires-approval",
+      "kind": "policy",
+      "input": {"workflow": "book_appointment"},
+      "expect": true,
+      "note": "Not in the policy table -> unknown action defaults to requiring approval."
+    },
+    {
+      "id": "policy-unknown-xyz-requires-approval",
+      "kind": "policy",
+      "input": {"workflow": "unknown_xyz"},
+      "expect": true,
+      "note": "Unknown workflow defaults to requiring approval (safe default)."
+    }
+  ]
+}

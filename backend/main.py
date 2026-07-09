@@ -42,23 +42,44 @@ async def lifespan(app: FastAPI):
     if os.getenv("REQUIRE_AUTH", "false").lower() != "true":
         print("⚠️  [security] REQUIRE_AUTH=false — business endpoints are OPEN. Set REQUIRE_AUTH=true for production.")
 
-    from backend.dispatcher.queue import worker_loop
-    from backend.events.worker import event_worker_loop
-    from backend.cron.autonomous_scheduler import start_autonomous_scheduler
-    from backend.cron.manager_scheduler import start_manager_schedulers
+    # ── HA role gating ──────────────────────────────────────────────────────
+    # ROLE selects which background responsibilities this process runs:
+    #   "all"       (default) → web + worker + scheduler in one process
+    #                            (historical single-node behavior, unchanged)
+    #   "web"       → serve the API only (routers are always mounted below)
+    #   "worker"    → run the task/event worker loops only
+    #   "scheduler" → run the autonomous + manager schedulers only
+    # Deploy separate replicas with ROLE=web|worker|scheduler to scale out
+    # without double-firing. Best-effort: never let role detection crash startup.
+    try:
+        from backend.ha.leader import role as _ha_role, NODE_ID as _node_id
+        _role = _ha_role()
+    except Exception:
+        _role, _node_id = "all", "?"
+    _run_worker = _role in ("all", "worker")
+    _run_scheduler = _role in ("all", "scheduler")
 
-    task_worker = asyncio.create_task(worker_loop())
-    event_worker = asyncio.create_task(event_worker_loop())
-    scheduler_tasks = await start_autonomous_scheduler()
-    manager_tasks = await start_manager_schedulers()
-    scheduler_tasks = list(scheduler_tasks) + list(manager_tasks)
+    background_tasks: list[asyncio.Task] = []
 
-    print(f"✅ Task worker + Event worker + {len(scheduler_tasks)} scheduler tasks started")
+    if _run_worker:
+        from backend.dispatcher.queue import worker_loop
+        from backend.events.worker import event_worker_loop
+        background_tasks.append(asyncio.create_task(worker_loop()))
+        background_tasks.append(asyncio.create_task(event_worker_loop()))
+
+    if _run_scheduler:
+        from backend.cron.autonomous_scheduler import start_autonomous_scheduler
+        from backend.cron.manager_scheduler import start_manager_schedulers
+        scheduler_tasks = await start_autonomous_scheduler()
+        manager_tasks = await start_manager_schedulers()
+        background_tasks += list(scheduler_tasks) + list(manager_tasks)
+
+    print(f"✅ [ha] role={_role} node={_node_id} — "
+          f"{len(background_tasks)} background task(s) started "
+          f"(worker={_run_worker}, scheduler={_run_scheduler})")
     yield
 
-    task_worker.cancel()
-    event_worker.cancel()
-    for t in scheduler_tasks:
+    for t in background_tasks:
         t.cancel()
     print("All workers stopped")
 
