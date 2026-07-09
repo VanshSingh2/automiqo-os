@@ -670,6 +670,12 @@ ALTER TABLE knowledge       ADD COLUMN IF NOT EXISTS embedding vector(1536);
 ALTER TABLE knowledge       ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'manual';
 ALTER TABLE knowledge       ADD COLUMN IF NOT EXISTS approved BOOLEAN DEFAULT true;
 
+-- Slack integration (config->slack_agent_map holds channel_id -> agent_key)
+ALTER TABLE businesses      ADD COLUMN IF NOT EXISTS slack_enabled BOOLEAN DEFAULT false;
+ALTER TABLE businesses      ADD COLUMN IF NOT EXISTS slack_team_id TEXT;
+ALTER TABLE businesses      ADD COLUMN IF NOT EXISTS slack_ceo_channel_id TEXT;
+ALTER TABLE businesses      ADD COLUMN IF NOT EXISTS slack_team_channel_id TEXT;
+
 -- leads: full lead-intelligence + social column set (heals a pre-existing
 -- leads table created by the original setup_supabase.sql before migrations)
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS company_name TEXT;
