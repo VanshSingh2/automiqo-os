@@ -37,6 +37,21 @@ async def run_learning_daily_loop(business_id: str) -> dict:
     actions_taken = []
     approvals_queued = []
 
+    # ── 0. CLOSE THE SELF-IMPROVEMENT LOOP ───────────────────
+    # Evaluate any canaries started on a prior night: adopt if the metric held,
+    # else roll back. evaluate_canary is a no-op unless AUTO_IMPROVE is on, and
+    # is fully best-effort so it can never break the nightly loop.
+    try:
+        from backend.engines import improvement_manager
+        pending = sb.table("improvements").select("id").eq("business_id", bid) \
+            .eq("status", "canary").limit(50).execute().data or []
+        for _imp in pending:
+            await improvement_manager.evaluate_canary(bid, _imp.get("id"))
+        if pending:
+            actions_taken.append(f"evaluated {len(pending)} improvement canary(ies)")
+    except Exception:
+        pass
+
     # ── 1. ANALYZE TODAY'S CALLS ─────────────────────────────
     calls = sb.table("calls").select("id,transcript,summary,outcome,sentiment")\
         .eq("business_id", bid).gte("called_at", today_start)\

@@ -127,6 +127,40 @@ async def test_all_functions_safe_on_db_error(monkeypatch):
         assert await improvement_manager.rollback("b", "imp-1") is False
 
 
-async def test_read_current_metric_safe_on_db_error(monkeypatch):
-    with patch(SB_PATH, side_effect=_raiser):
-        assert await improvement_manager._read_current_metric("b", "cfo") == 0.0
+async def test_read_current_metric_safe_and_bounded():
+    # Now backed by agent_metrics.reliability (which never raises and returns a
+    # trusting default): the metric must be a float in [0,1] and never raise.
+    val = await improvement_manager._read_current_metric("b", "cfo")
+    assert isinstance(val, float) and 0.0 <= val <= 1.0
+
+
+async def test_apply_adopted_value_writes_reversible_addendum(make_sb):
+    sb = make_sb({"businesses": [{"config": {}}]})
+    with patch(SB_PATH, return_value=sb):
+        improvement_manager._apply_adopted_value(
+            "biz-1", {"target_type": "prompt", "target_key": "cfo", "new_value": "Be concise."})
+    upd = sb.queries["businesses"].updated[-1]
+    assert upd["config"]["prompt_addenda"]["cfo"] == ["Be concise."]
+
+
+async def test_apply_adopted_value_skips_workflow(make_sb):
+    sb = make_sb({"businesses": [{"config": {}}]})
+    with patch(SB_PATH, return_value=sb):
+        improvement_manager._apply_adopted_value(
+            "biz-1", {"target_type": "workflow", "target_key": "wf", "new_value": "y"})
+    # workflow improvements are ledger-only -> no config write attempted
+    assert "businesses" not in sb.queries
+
+
+async def test_rollback_removes_addendum(make_sb):
+    sb = make_sb({
+        "improvements": [{"id": "imp-1", "target_type": "prompt",
+                          "target_key": "cfo", "new_value": "Be concise."}],
+        "businesses": [{"config": {"prompt_addenda": {"cfo": ["Be concise.", "Keep it warm."]}}}],
+    })
+    with patch(SB_PATH, return_value=sb):
+        ok = await improvement_manager.rollback("biz-1", "imp-1")
+    assert ok is True
+    updates = sb.queries["businesses"].updated
+    assert any(u.get("config", {}).get("prompt_addenda", {}).get("cfo") == ["Keep it warm."]
+               for u in updates)

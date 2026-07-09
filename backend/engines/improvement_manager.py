@@ -62,38 +62,80 @@ def _canary_tolerance() -> float:
 
 async def _read_current_metric(business_id: str, target_key: str) -> float:
     """
-    Best-effort read of a simple current metric for this target.
+    Best-effort current QUALITY metric (0..1) for a target.
 
-    We reuse an existing metric table (agent_metrics) if present; the latest
-    recorded score for the target is used as a proxy for canary/baseline
-    health. On any problem we return 0.0 (with the understanding that a 0
-    baseline just means "no signal yet").
+    Uses the real ``agent_metrics`` schema via ``agent_metrics.reliability`` and
+    returns the target agent's recent success_rate as the canary/baseline
+    signal — so a regression (more failures after the change) drives a rollback.
+    ``reliability`` itself never raises and returns a trusting default
+    (success_rate=1.0) when there is no signal yet; we only fall back to 0.0 on
+    a hard error here.
     """
     try:
-        from backend.memory.supabase_client import get_supabase
-        sb = get_supabase()
-        rows = sb.table("agent_metrics").select("score,recorded_at")\
-            .eq("business_id", business_id).eq("agent", target_key)\
-            .order("recorded_at").limit(50).execute().data or []
-        if not rows:
-            return 0.0
-        # Use the most recent score available.
-        latest = rows[-1]
-        return float(latest.get("score") or 0.0)
+        from backend.engines import agent_metrics
+        stats = await agent_metrics.reliability(business_id, target_key)
+        return float(stats.get("success_rate", 1.0) or 0.0)
     except Exception:
         return 0.0
 
 
 def _apply_adopted_value(business_id: str, row: dict) -> None:
     """
-    Placeholder adopter hook.
+    Apply an adopted improvement in a SAFE, REVERSIBLE way.
 
-    Intentionally a no-op: applying an adopted prompt/workflow change to the
-    live system (prompt files, n8n JSON, etc.) is a manual/operator deploy step
-    and is out of scope here for safety. A future implementation could wire a
-    controlled deploy here. Never raises.
+    PROMPT improvements are applied as ADDITIVE addenda stored on the business
+    config: ``businesses.config['prompt_addenda'][target_key] = [..texts..]``.
+    Agents append these to their system prompt at run time (see
+    BaseAgent._inject_biz), so an adopted change actually affects behaviour —
+    yet we never overwrite prompt files or n8n JSON, and a rollback simply
+    removes the addendum. The list is capped so prompts can't grow unbounded.
+
+    WORKFLOW improvements stay ledger-only (auto-editing n8n JSON is out of
+    scope / unsafe). Never raises.
     """
-    return None
+    try:
+        if (row or {}).get("target_type") != "prompt":
+            return
+        target_key = (row.get("target_key") or "").strip()
+        new_value = (row.get("new_value") or "").strip()
+        if not target_key or not new_value:
+            return
+        from backend.memory.supabase_client import get_supabase
+        sb = get_supabase()
+        biz = sb.table("businesses").select("config").eq("id", business_id).limit(1).execute().data or []
+        cfg = (biz[0].get("config") if biz else {}) or {}
+        addenda = cfg.get("prompt_addenda") or {}
+        lst = list(addenda.get(target_key) or [])
+        if new_value not in lst:
+            lst.append(new_value)
+        addenda[target_key] = lst[-5:]  # keep only the 5 most recent, bound prompt growth
+        cfg["prompt_addenda"] = addenda
+        sb.table("businesses").update({"config": cfg}).eq("id", business_id).execute()
+    except Exception:
+        return None
+
+
+def _remove_adopted_value(business_id: str, row: dict) -> None:
+    """Reverse _apply_adopted_value: drop the addendum for a rolled-back prompt
+    improvement from the business config. Best-effort; never raises."""
+    try:
+        if (row or {}).get("target_type") != "prompt":
+            return
+        target_key = (row.get("target_key") or "").strip()
+        new_value = (row.get("new_value") or "").strip()
+        if not target_key or not new_value:
+            return
+        from backend.memory.supabase_client import get_supabase
+        sb = get_supabase()
+        biz = sb.table("businesses").select("config").eq("id", business_id).limit(1).execute().data or []
+        cfg = (biz[0].get("config") if biz else {}) or {}
+        addenda = cfg.get("prompt_addenda") or {}
+        lst = [x for x in (addenda.get(target_key) or []) if x != new_value]
+        addenda[target_key] = lst
+        cfg["prompt_addenda"] = addenda
+        sb.table("businesses").update({"config": cfg}).eq("id", business_id).execute()
+    except Exception:
+        return None
 
 
 async def propose(business_id, target_type, target_key, new_value,
@@ -215,10 +257,20 @@ async def evaluate_canary(business_id, improvement_id) -> str:
 
 
 async def rollback(business_id, improvement_id) -> bool:
-    """Mark an improvement as rolled back (best-effort). Never raises."""
+    """Mark an improvement as rolled back AND undo any applied addendum
+    (best-effort). Never raises."""
     try:
         from backend.memory.supabase_client import get_supabase
         sb = get_supabase()
+        # Undo the live effect (remove the prompt addendum) if it was adopted.
+        try:
+            rows = sb.table("improvements").select("*") \
+                .eq("business_id", business_id).eq("id", improvement_id) \
+                .limit(1).execute().data or []
+            if rows:
+                _remove_adopted_value(business_id, rows[0])
+        except Exception:
+            pass
         sb.table("improvements").update({
             "status": "rolled_back",
             "decided_at": _now(),

@@ -19,7 +19,8 @@ Everything is wrapped defensively. On ANY unexpected error we fail OPEN
 in which case we fail to "escalate".
 
 Env vars:
-    VERIFY_LLM_JUDGE          ("true"/"false", default false) — enable LLM-as-judge
+    VERIFY_LLM_JUDGE          ("true"/"false", default TRUE) — enable LLM-as-judge
+                              (only actually runs when OPENAI_API_KEY is also set)
     VERIFY_ESCALATE_THRESHOLD (float, default 0.5) — score below this escalates
     VERIFY_FAIL_CLOSED        ("true"/"false", default false) — error handling mode
 """
@@ -189,7 +190,7 @@ async def evaluate_action(business_id: str, workflow: str, parameters: dict, rea
             pass
 
         # ── 3. LLM-AS-JUDGE (optional, off by default) ───────────────────
-        if os.getenv("OPENAI_API_KEY") and _env_bool("VERIFY_LLM_JUDGE", False):
+        if os.getenv("OPENAI_API_KEY") and _env_bool("VERIFY_LLM_JUDGE", True):
             judge_score, judge_reason = await _llm_judge(business_id, wf, parameters, reason)
             if judge_score is not None:
                 score = min(score, judge_score)

@@ -49,6 +49,9 @@ class BaseAgent(ABC):
 
     def _load_prompt(self, name: str) -> str:
         import os
+        # Remember which prompt this is so _inject_biz can apply any adopted
+        # prompt-improvement addenda for it (closed-loop self-improvement).
+        self._loaded_prompt_name = name
         path = os.path.join(os.path.dirname(__file__), "..", "prompts", f"{name}.md")
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
@@ -261,7 +264,7 @@ class BaseAgent(ABC):
             f"USPs: {'; '.join(cfg.get('unique_selling_points', [])) or 'quality service'}"
         )
 
-        return prompt \
+        result = prompt \
             .replace("{business_name}", biz.get("name", "Your Business")) \
             .replace("{industry}", biz.get("industry", "service")) \
             .replace("{timezone}", biz.get("timezone", "America/New_York")) \
@@ -269,3 +272,15 @@ class BaseAgent(ABC):
             .replace("{brand_voice}", cfg.get("brand_voice", "friendly, professional")) \
             .replace("{booking_url}", cfg.get("booking_url", "")) \
             .replace("{business_context}", context_block)
+
+        # Apply any adopted prompt-improvement addenda for this prompt (additive,
+        # reversible; written by improvement_manager when a canary is adopted).
+        try:
+            _name = getattr(self, "_loaded_prompt_name", None)
+            _addenda = (cfg.get("prompt_addenda") or {}).get(_name) if _name else None
+            if _addenda:
+                result = result + "\n\n## Adopted improvements (learned)\n" + \
+                    "\n".join(f"- {a}" for a in _addenda)
+        except Exception:
+            pass
+        return result

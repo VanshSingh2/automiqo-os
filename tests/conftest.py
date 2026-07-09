@@ -27,6 +27,9 @@ os.environ.setdefault("OPENAI_API_KEY", "test-openai-key")
 os.environ.setdefault("JWT_SECRET", "test-secret-at-least-32-characters-long-xx")
 os.environ.setdefault("RATE_LIMIT_ENABLED", "true")
 os.environ.setdefault("RATE_LIMIT_PER_MINUTE", "30")
+# Keep the LLM verification judge OFF during tests for determinism/speed
+# (production defaults it ON). Tests that exercise the judge opt in explicitly.
+os.environ.setdefault("VERIFY_LLM_JUDGE", "false")
 
 
 # ── stub heavy third-party modules ──────────────────────────────────────────

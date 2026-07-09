@@ -110,3 +110,34 @@ async def test_dispatch_fires_when_verification_raises(make_sb, monkeypatch):
         await handlers.dispatch_action("biz-1", "send_reminder_24h",
                                        {"customer_id": "c1"}, "reminder")
     enq.assert_awaited_once()
+
+
+
+# ── LLM judge (now ON by default in production) ─────────────────────────────
+async def test_llm_judge_runs_when_enabled(monkeypatch):
+    # Enable the judge (conftest disables it globally for speed) and stub the
+    # actual LLM call to a low score -> the judge must drag the verdict down.
+    monkeypatch.setenv("VERIFY_LLM_JUDGE", "true")
+
+    async def _fake_judge(*a, **k):
+        return 0.1, "looks risky"
+
+    monkeypatch.setattr(verification_engine, "_llm_judge", _fake_judge)
+    verdict = await verification_engine.evaluate_action(
+        "biz-1", "send_reminder_24h", {"customer_id": "c1", "appointment_id": "a1"}, "reminder")
+    assert verdict["approved"] is False
+    assert verdict["verdict"] in ("escalate", "block")
+    assert any("llm_judge" in r for r in verdict["reasons"])
+
+
+async def test_llm_judge_high_score_allows(monkeypatch):
+    monkeypatch.setenv("VERIFY_LLM_JUDGE", "true")
+
+    async def _fake_judge(*a, **k):
+        return 0.95, "fine"
+
+    monkeypatch.setattr(verification_engine, "_llm_judge", _fake_judge)
+    verdict = await verification_engine.evaluate_action(
+        "biz-1", "send_reminder_24h", {"customer_id": "c1", "appointment_id": "a1"}, "reminder")
+    assert verdict["verdict"] == "allow"
+    assert verdict["approved"] is True
