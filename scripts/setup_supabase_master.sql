@@ -1014,6 +1014,30 @@ BEGIN
   END LOOP;
 END $$;
 
+-- AI Clone Content Autopilot — staged social-media posts awaiting publish.
+CREATE TABLE IF NOT EXISTS content_posts (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  business_id   UUID REFERENCES businesses(id) ON DELETE CASCADE,
+  platform      TEXT,
+  scheduled_for TIMESTAMPTZ,
+  caption       TEXT,
+  status        TEXT NOT NULL DEFAULT 'scheduled',
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_content_posts_biz_status ON content_posts(business_id, status);
+CREATE INDEX IF NOT EXISTS idx_content_posts_scheduled_for ON content_posts(scheduled_for);
+
+DO $$
+DECLARE t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['content_posts'] LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = t AND policyname = 'service_role_all') THEN
+      EXECUTE format('CREATE POLICY "service_role_all" ON %I FOR ALL TO service_role USING (true) WITH CHECK (true)', t);
+    END IF;
+  END LOOP;
+END $$;
+
 CREATE OR REPLACE VIEW sequence_stats AS
 SELECT
   business_id,
