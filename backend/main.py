@@ -28,6 +28,9 @@ from backend.api.team_chat_api import router as team_chat_router
 from backend.api.webhooks import router as webhooks_router
 from backend.api.slack import router as slack_router
 from backend.api.disagreements import router as disagreements_router
+from backend.api.chatbot_api import router as chatbot_router
+from backend.api.ugc_api import router as ugc_router
+from backend.api.content_api import router as content_router
 
 
 @asynccontextmanager
@@ -105,6 +108,7 @@ app.include_router(auth_router)
 app.include_router(webhooks_router)
 app.include_router(slack_router)
 app.include_router(disagreements_router)
+app.include_router(chatbot_router)  # PUBLIC website FAQ chatbot widget
 
 # Protected business routers — require a valid token + tenant match when
 # REQUIRE_AUTH=true (no-op in dev). health/auth/webhooks stay open by design.
@@ -123,6 +127,8 @@ app.include_router(engines_router, dependencies=[_protected])
 app.include_router(business_modules_router, dependencies=[_protected])
 app.include_router(metrics_router, dependencies=[_protected])
 app.include_router(team_chat_router, dependencies=[_protected])
+app.include_router(ugc_router, dependencies=[_protected])
+app.include_router(content_router, dependencies=[_protected])
 
 
 def _check_cron_secret(x_cron_secret: str = Header(None)):

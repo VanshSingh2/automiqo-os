@@ -1,0 +1,188 @@
+{
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "name": "generate_ugc_ad",
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Business",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Business": {
+      "main": [
+        [
+          {
+            "node": "Generate Concepts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Concepts": {
+      "main": [
+        [
+          {
+            "node": "Update Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Task": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "id": "wh-ugc",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "path": "generate_ugc_ad",
+        "responseMode": "responseNode",
+        "httpMethod": "POST"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "val-ugc",
+      "name": "Validate Business",
+      "credentials": {
+        "supabaseApi": {
+          "name": "Supabase_Main"
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "position": [
+        460,
+        300
+      ],
+      "parameters": {
+        "tableId": "businesses",
+        "operation": "select",
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "={{ $json.business_id }}",
+              "condition": "equals",
+              "keyName": "id"
+            }
+          ]
+        }
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "gen-ugc",
+      "name": "Generate Concepts",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        680,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.BACKEND_URL }}/ugc/{{ $('Webhook').item.json.business_id }}/concepts",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Webhook').item.json.parameters) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "typeVersion": 4
+    },
+    {
+      "id": "upd-ugc",
+      "name": "Update Task",
+      "credentials": {
+        "supabaseApi": {
+          "name": "Supabase_Main"
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "position": [
+        900,
+        300
+      ],
+      "parameters": {
+        "tableId": "tasks",
+        "operation": "update",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "completed"
+            },
+            {
+              "fieldId": "result",
+              "fieldValue": "={{ JSON.stringify($('Generate Concepts').item.json) }}"
+            },
+            {
+              "fieldId": "completed_at",
+              "fieldValue": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "dataToSend": "defineBelow",
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "={{ $('Webhook').item.json.task_id }}",
+              "condition": "equals",
+              "keyName": "id"
+            },
+            {
+              "keyName": "business_id",
+              "keyValue": "={{ $('Webhook').item.json.business_id }}",
+              "condition": "eq"
+            }
+          ]
+        }
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "res-ugc",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        1120,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, workflow: 'generate_ugc_ad', data: $('Generate Concepts').item.json }) }}"
+      },
+      "typeVersion": 1
+    }
+  ],
+  "active": true
+}

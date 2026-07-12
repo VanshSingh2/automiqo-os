@@ -61,6 +61,8 @@ POLICIES: dict[str, tuple[str, bool, bool]] = {
     "run_lead_pipeline":              ("medium",   True,  False),
     "score_lead":                     ("medium",   True,  False),
     "enrich_lead_profile":            ("medium",   True,  False),
+    "generate_ugc_ad":                ("medium",   True,  False),
+    "generate_content_calendar":      ("low",      True,  False),
 
     # HIGH — requires owner approval before firing
     "place_inventory_order":          ("high",     False, True),

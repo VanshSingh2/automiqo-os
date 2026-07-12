@@ -113,6 +113,32 @@ def _verify_email(request: Request, raw_body: bytes) -> None:
         print(f"[webhooks] email signature verification error (skipping): {e}")
 
 
+def _verify_whatsapp(request: Request, raw_body: bytes) -> None:
+    """Verify a provider-agnostic inbound-WhatsApp HMAC-SHA256 signature.
+
+    The sender must sign the raw request body with the shared secret
+    WHATSAPP_WEBHOOK_SECRET and send the lowercase hex digest in the
+    'x-whatsapp-signature-256' header.
+
+    Skips (with warning) if WHATSAPP_WEBHOOK_SECRET is unset so local dev keeps
+    working. Raises HTTPException(401) on a real verification failure.
+    Mirrors _verify_email.
+    """
+    secret = os.getenv("WHATSAPP_WEBHOOK_SECRET")
+    if not secret:
+        print("[webhooks] WHATSAPP_WEBHOOK_SECRET unset — skipping WhatsApp signature verification")
+        return
+    try:
+        provided = request.headers.get("x-whatsapp-signature-256", "")
+        expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(provided, expected):
+            raise HTTPException(status_code=401, detail="invalid WhatsApp signature")
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[webhooks] WhatsApp signature verification error (skipping): {e}")
+
+
 # ── Multi-tenant routing helper ───────────────────────────────
 
 def _business_for_phone(sb, to_number: str):
@@ -389,6 +415,83 @@ async def email_inbound(request: Request):
                 "body": text[:4000],
                 "sent_at": datetime.now(timezone.utc).isoformat(),
             }).execute()
+        except Exception:
+            pass
+
+        return JSONResponse({"status": "ok"})
+    except HTTPException:
+        raise
+    except Exception as e:
+        return JSONResponse({"status": "error", "detail": str(e)})
+
+
+
+@router.post("/webhooks/whatsapp/inbound")
+async def whatsapp_inbound(request: Request):
+    """Provider-agnostic inbound WhatsApp webhook — fires whatsapp.received event.
+
+    The autonomous org can now 'hear' inbound customer WhatsApp messages (in
+    addition to SMS/calls/email) and auto-handle them via the same conversational
+    SDR flow used for SMS. Accepts a range of provider payload shapes with
+    graceful fallbacks (Twilio WhatsApp, Meta Cloud API, generic JSON).
+    """
+    try:
+        raw_body = await request.body()
+        _verify_whatsapp(request, raw_body)
+
+        body = await request.json()
+
+        # Provider-agnostic field extraction with graceful fallbacks.
+        from_number = (
+            body.get("from")
+            or body.get("From")
+            or body.get("WaId")
+            or (body.get("messages", [{}])[0].get("from") if body.get("messages") else "")
+        )
+        to_number = body.get("to") or body.get("To")
+        text = (
+            body.get("text")
+            or body.get("Body")
+            or (body.get("messages", [{}])[0].get("text", {}).get("body") if body.get("messages") else "")
+            or ""
+        )
+
+        if not from_number or not text:
+            return JSONResponse({"status": "ignored"})
+
+        # Strip the 'whatsapp:' prefix Twilio adds to numbers before routing.
+        def _strip(n):
+            return n[len("whatsapp:"):] if isinstance(n, str) and n.startswith("whatsapp:") else n
+        from_number = _strip(from_number)
+        to_number = _strip(to_number)
+
+        # Resolve which business owns this destination number (best-effort).
+        from backend.memory.supabase_client import get_supabase
+        sb = get_supabase()
+        business_id = _business_for_phone(sb, to_number)
+        if not business_id:
+            return JSONResponse({"status": "no_business"})
+
+        # Publish event — autonomous agents handle the rest.
+        from backend.events.bus import publish
+        await publish(business_id, "whatsapp.received", {
+            "from": from_number,
+            "to": to_number,
+            "body": text[:2000],
+            "channel": "whatsapp",
+            "direction": "inbound",
+        }, source="whatsapp_webhook")
+
+        # Route into the conversational SDR (best-effort — never crash the webhook).
+        try:
+            from backend.conversations.manager import handle_inbound_whatsapp
+            await handle_inbound_whatsapp(business_id, {
+                "from": from_number,
+                "to": to_number,
+                "body": text[:2000],
+                "channel": "whatsapp",
+                "direction": "inbound",
+            })
         except Exception:
             pass
 

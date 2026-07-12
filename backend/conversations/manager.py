@@ -44,8 +44,16 @@ async def get_or_create_conversation(business_id: str, phone: str, lead_id: str 
     return result.data[0] if result.data else {}
 
 
-async def handle_inbound_sms(business_id: str, payload: dict) -> None:
-    """Route inbound SMS through AI SDR → qualify → book."""
+async def handle_inbound_sms(business_id: str, payload: dict, channel: str = "sms") -> None:
+    """Route an inbound message through AI SDR → qualify → book.
+
+    Generic across text channels: ``channel`` selects the reply transport
+    ("sms" via Telnyx, "whatsapp" via the WhatsApp sender). Defaults to "sms"
+    so existing callers are unaffected.
+    """
+    # Pick the reply transport for this channel (defensive default: SMS).
+    _reply = _send_whatsapp if channel == "whatsapp" else _send_sms
+
     from_phone = payload.get("from", payload.get("from_number", ""))
     message_body = payload.get("body", payload.get("text", ""))
     if not from_phone or not message_body:
@@ -78,7 +86,7 @@ async def handle_inbound_sms(business_id: str, payload: dict) -> None:
 
     # Hard stop
     if any(w in msg_lower for w in STOP_WORDS):
-        await _send_sms(from_phone, "Got it — we'll stop messaging you. Take care! 😊")
+        await _reply(from_phone, "Got it — we'll stop messaging you. Take care! 😊")
         _update_conv(sb, conv["id"], ConvState.DEAD, messages, message_body)
         if lead:
             sb.table("leads").update({"status": "dead"}).eq("id", lead["id"]).execute()
@@ -92,7 +100,7 @@ async def handle_inbound_sms(business_id: str, payload: dict) -> None:
         name = (customer or lead or {}).get("name") or (lead or {}).get("company_name") or "there"
         reply = (f"Amazing, {name}! 🎉 Here's your booking link: {booking_url} — "
                  f"pick any time that works and we'll confirm right away. See you soon!")
-        await _send_sms(from_phone, reply)
+        await _reply(from_phone, reply)
         messages.append({"role": "ai", "text": reply, "timestamp": datetime.now(timezone.utc).isoformat()})
         _update_conv(sb, conv["id"], ConvState.INTERESTED, messages, message_body)
         if lead:
@@ -102,7 +110,7 @@ async def handle_inbound_sms(business_id: str, payload: dict) -> None:
     # AI SDR generates a contextual reply
     reply = await _generate_sdr_reply(business_id, conv, message_body, customer, lead, messages)
     if reply:
-        await _send_sms(from_phone, reply)
+        await _reply(from_phone, reply)
         messages.append({"role": "ai", "text": reply, "timestamp": datetime.now(timezone.utc).isoformat()})
 
     new_state = _next_state(current_state, msg_lower)
@@ -237,6 +245,36 @@ async def _send_sms(to_phone: str, message: str) -> None:
         pass
 
 
+async def _send_whatsapp(to_phone: str, message: str) -> None:
+    """Send a WhatsApp message (best-effort, provider-agnostic).
+
+    Uses Twilio's WhatsApp API when TWILIO_* creds are present, else falls back
+    to Telnyx (which shares the same messaging endpoint). Fully defensive —
+    never raises so the conversational flow can't be broken by a send failure.
+    """
+    try:
+        twilio_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
+        twilio_token = os.getenv("TWILIO_AUTH_TOKEN", "")
+        wa_from = os.getenv("WHATSAPP_FROM", os.getenv("TWILIO_WHATSAPP_FROM", ""))
+        if twilio_sid and twilio_token and wa_from:
+            to = to_phone if to_phone.startswith("whatsapp:") else f"whatsapp:{to_phone}"
+            frm = wa_from if wa_from.startswith("whatsapp:") else f"whatsapp:{wa_from}"
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(
+                    f"https://api.twilio.com/2010-04-01/Accounts/{twilio_sid}/Messages.json",
+                    auth=(twilio_sid, twilio_token),
+                    data={"From": frm, "To": to, "Body": message},
+                )
+            return
+    except Exception:
+        pass
+    # Fallback: best-effort via the SMS transport so a reply still goes out.
+    try:
+        await _send_sms(to_phone, message)
+    except Exception:
+        pass
+
+
 def _next_state(current: str, msg_lower: str) -> str:
     if any(w in msg_lower for w in NOT_NOW_WORDS):
         return ConvState.NOT_NOW
@@ -264,3 +302,35 @@ async def continue_lead_conversation(business_id: str, payload: dict) -> None:
     phone = payload.get("phone", "")
     if phone:
         await handle_inbound_sms(business_id, {"from": phone, "body": payload.get("message", "")})
+
+
+async def handle_inbound_whatsapp(business_id: str, payload: dict) -> None:
+    """Route an inbound WhatsApp message through the same AI SDR flow as SMS.
+
+    Mirrors ``handle_inbound_sms`` (qualify → SDR reply → booking) but sends
+    replies over the WhatsApp channel. handle_inbound_sms is generic across text
+    channels, so we delegate to it with channel='whatsapp'. Fully defensive —
+    never raises so the webhook can't be broken by conversational failures.
+    """
+    try:
+        # Normalise the sender/body fields and strip any 'whatsapp:' prefix so
+        # downstream lookups match stored phone numbers.
+        norm = dict(payload or {})
+        from_phone = (
+            norm.get("from")
+            or norm.get("from_number")
+            or norm.get("From")
+            or norm.get("WaId")
+            or ""
+        )
+        if isinstance(from_phone, str) and from_phone.startswith("whatsapp:"):
+            from_phone = from_phone[len("whatsapp:"):]
+        body = norm.get("body") or norm.get("text") or norm.get("Body") or ""
+        if not from_phone or not body:
+            return
+        norm["from"] = from_phone
+        norm["body"] = body
+        await handle_inbound_sms(business_id, norm, channel="whatsapp")
+    except Exception:
+        # Best-effort: never propagate errors back to the webhook.
+        pass
